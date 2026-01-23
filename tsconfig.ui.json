@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./dist-ui",
+    "rootDir": "./src",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["src/ui/**/*.ts"],
+  "exclude": ["src/server/**/*", "src/engine/**/*", "test/**/*", "node_modules"]
+}

@@ -1,0 +1,117 @@
+LMR – PowerShell Command Set
+===========================
+
+Purpose
+-------
+This file is a stable, known-good launch and smoke-test checklist for the
+LMR WebSocket server and text UI client. It is intended to be copied,
+pasted, and reused after resets, refactors, or snapshots.
+
+Nothing in this file is executable. It is reference-only.
+
+
+Prerequisites
+-------------
+- Node.js installed
+- Dependencies installed (npm install)
+- Run all commands from the project root directory
+
+
+Standard 3-Window Setup
+-----------------------
+
+Open THREE separate PowerShell windows.
+
+
+Window 1 — Server
+-----------------
+Starts the WebSocket server on port 8787.
+
+Command:
+npx tsx src/server/devServer.ts
+
+Expected output:
+WS server running on port 8787
+
+
+Window 2 — Host
+---------------
+Creates a room and auto-starts the game when players are ready.
+
+Command:
+npx tsx src/ui/wsTextClient.ts ws://localhost:8787 host
+
+Expected output:
+- connected: true
+- TENTATIVE actorId = p0
+- ROOM CODE = <6-letter code>
+- LOCAL actorId (resolved from lobby) = p0
+- HUD appears
+- Host is prompted for die when it is their turn
+
+
+Window 3 — Join
+---------------
+Joins an existing room.
+
+Command:
+npx tsx src/ui/wsTextClient.ts ws://localhost:8787 join ROOMCODE
+
+Replace ROOMCODE with the value printed by the host.
+
+Expected output:
+- connected: true
+- TENTATIVE actorId = p1
+- ROOM CODE = ROOMCODE
+- LOCAL actorId (resolved from lobby) = p1
+- HUD appears
+
+
+Reconnect Behavior (Auto-Claim)
+-------------------------------
+The text client remembers which playerId (p0, p1, etc.) was used for each
+room code.
+
+After joining once:
+- Close the join window (Ctrl+C)
+- Re-run the same join command with NO additional arguments
+
+Command:
+npx tsx src/ui/wsTextClient.ts ws://localhost:8787 join ROOMCODE
+
+Expected output:
+- RECONNECTED = true
+- LOCAL actorId = previous value (e.g., p1)
+- No BAD_PHASE error
+- No creation of p2, p3, etc.
+
+
+Manual Claim Override (Rare)
+----------------------------
+If needed, you can force a seat claim.
+
+Command:
+npx tsx src/ui/wsTextClient.ts ws://localhost:8787 join ROOMCODE claim=p1
+
+
+Smoke Test Checklist
+--------------------
+A session is considered healthy if:
+
+- Server starts without errors
+- Host creates a room and sees HUD
+- Join connects as p1
+- Host is prompted for die when nextActorId = p0
+- Join reconnects without creating p2
+- No BAD_PHASE or NOT_READY errors during reconnect
+
+
+Notes
+-----
+- This file is safe to keep in the project root.
+- It is intentionally not a script.
+- Use this checklist after:
+  - Pulling a snapshot
+  - Replacing full files
+  - Returning to the project after time away
+  - Debugging WebSocket or lobby issues
