@@ -301,6 +301,9 @@ export function startWsServer(opts: WsServerOptions) {
   }
 
   wss.on("connection", (ws) => {
+    // welcome-on-connect (tests expect this)
+    send(ws, { type: "welcome", serverVersion: "lmr-ws-0.1.4", clientId: "anon" } as any);
+
     ws.on("message", (data) => {
       const raw = typeof data === "string" ? data : data.toString("utf8");
       const parsed = safeParseJson(raw);
@@ -317,7 +320,10 @@ export function startWsServer(opts: WsServerOptions) {
       if (parsed && typeof parsed === "object" && (parsed as any).type === "hello") {
         const cid = typeof (parsed as any).clientId === "string" ? (parsed as any).clientId : "anon";
         wsClientId.set(ws, cid);
-        send(ws, withReqId({ type: "welcome", serverVersion: "lmr-ws-0.1.4", clientId: cid } as any, reqId));
+        send(
+          ws,
+          withReqId({ type: "welcome", serverVersion: "lmr-ws-0.1.4", clientId: cid } as any, reqId)
+        );
         return;
       }
 
@@ -349,16 +355,27 @@ export function startWsServer(opts: WsServerOptions) {
         room.sockets.add(ws);
         wsRoom.set(ws, roomCode);
 
-        const claim = typeof (msg as any).claimPlayerId === "string" ? String((msg as any).claimPlayerId) : undefined;
+        const claim =
+          typeof (msg as any).claimPlayerId === "string" ? String((msg as any).claimPlayerId) : undefined;
 
-        const playerId = claim ?? pickNextAvailablePlayerId(room);
+        // Preserve existing mapping for this clientId (reconnect behavior)
+        const existing = room.clientToPlayer.get(cid);
+        const playerId = existing ?? claim ?? pickNextAvailablePlayerId(room);
+
         room.clientToPlayer.set(cid, playerId);
-        room.readyByPlayer.set(playerId, false);
+        if (!room.readyByPlayer.has(playerId)) room.readyByPlayer.set(playerId, false);
 
         persist(room);
 
         send(ws, withReqId({ type: "roomJoined", roomCode: roomCode, actorId: playerId } as any, reqId));
         emitLobbySync(room, reqId);
+
+        // IMPORTANT: If the room is already active (including after persistence restore),
+        // immediately deliver stateSync so joiners can render current game state.
+        if (room.phase === "active") {
+          emitStateSync(room, reqId);
+        }
+
         return;
       }
 
@@ -413,6 +430,14 @@ export function startWsServer(opts: WsServerOptions) {
 
       send(ws, result.serverMessage);
 
+      // Broadcast moveResult to other room members (default behavior)
+      if ((result.serverMessage as any)?.type === "moveResult") {
+        for (const other of room.sockets) {
+          if (other !== ws) send(other, result.serverMessage);
+        }
+      }
+
+      // Optional extra broadcast stateSync (legacy flag); keep as-is
       if (opts.broadcast) {
         emitStateSync(room, (msg as any).reqId);
       }

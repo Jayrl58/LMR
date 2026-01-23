@@ -199,7 +199,9 @@ export function handleClientMessage(
       const rollerId = String(state.turn.nextActorId);
 
       // Consume one banked extra roll *when a roll is actually taken*.
-      const banked0 = Number.isInteger(state.bankedExtraRolls) ? (state.bankedExtraRolls as number) : 0;
+      const banked0 = Number.isInteger(state.bankedExtraRolls)
+        ? (state.bankedExtraRolls as number)
+        : 0;
       const bankedAfterConsume = banked0 > 0 ? banked0 - 1 : 0;
 
       // Choose who ACTS for this roll (may be teammate).
@@ -268,15 +270,27 @@ export function handleClientMessage(
         };
       }
 
-      // If there are pending dice, getLegalMoves must be for a subset of them.
+      // ENFORCEMENT: When pendingDice exists, getLegalMoves must request EXACTLY ONE die.
       if (Array.isArray(state.pendingDice) && state.pendingDice.length > 0) {
+        if (dice.length !== 1) {
+          return {
+            nextState: state,
+            serverMessage: mkError(
+              "BAD_TURN_STATE",
+              "When pending dice exist, getLegalMoves must specify exactly one die.",
+              reqId
+            ),
+          };
+        }
+
+        // The requested die must be available in pendingDice.
         const chk = subtractDice(state.pendingDice, dice);
         if (!chk.ok) {
           return {
             nextState: state,
             serverMessage: mkError(
               "BAD_TURN_STATE",
-              "Requested dice are not available in pending dice.",
+              "Requested die is not available in pending dice.",
               reqId
             ),
           };
@@ -319,16 +333,27 @@ export function handleClientMessage(
         };
       }
 
-      // If we have pendingDice, the move must spend a subset of them.
+      // ENFORCEMENT: When pendingDice exists, move must spend EXACTLY ONE die.
       let remainingDice: number[] = [];
       if (Array.isArray(state.pendingDice) && state.pendingDice.length > 0) {
+        if (diceUsed.length !== 1) {
+          return {
+            nextState: state,
+            serverMessage: mkError(
+              "BAD_TURN_STATE",
+              "When pending dice exist, move must specify exactly one die.",
+              reqId
+            ),
+          };
+        }
+
         const sub = subtractDice(state.pendingDice, diceUsed);
         if (!sub.ok) {
           return {
             nextState: state,
             serverMessage: mkError(
               "BAD_TURN_STATE",
-              "Move dice are not available in pending dice.",
+              "Move die is not available in pending dice.",
               reqId
             ),
           };
@@ -339,7 +364,7 @@ export function handleClientMessage(
       const response = tryApplyMoveWithResponse(
         state.game as any,
         (msg as any).actorId as any,
-        (msg as any).dice as any,
+        diceUsed as any,
         (msg as any).move
       );
 
@@ -350,7 +375,9 @@ export function handleClientMessage(
         const teamPlayOn = nextGame?.config?.options?.teamPlay === true;
 
         // bank extra rolls earned by THIS die spend
-        const banked0 = Number.isInteger(state.bankedExtraRolls) ? (state.bankedExtraRolls as number) : 0;
+        const banked0 = Number.isInteger(state.bankedExtraRolls)
+          ? (state.bankedExtraRolls as number)
+          : 0;
         const bankedEarned = isExtraRollFromDice(diceUsed) ? 1 : 0;
         const banked1 = banked0 + bankedEarned;
 
@@ -360,7 +387,11 @@ export function handleClientMessage(
         // - same roller keeps control
         // - awaitingDice stays false
         // - pendingDice keeps the remainder
-        if (Array.isArray(state.pendingDice) && state.pendingDice.length > 0 && remainingDice.length > 0) {
+        if (
+          Array.isArray(state.pendingDice) &&
+          state.pendingDice.length > 0 &&
+          remainingDice.length > 0
+        ) {
           const nextTurn: TurnInfo = {
             ...engineTurn,
             nextActorId: rollerId, // keep control with the roller while resolving dice

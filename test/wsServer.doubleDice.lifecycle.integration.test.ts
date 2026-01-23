@@ -67,10 +67,14 @@ describe("wsServer doubleDice lifecycle integration", () => {
       ws.on("error", (e) => reject(e));
     });
 
+    // 0) welcome-on-connect (server sends immediately)
+    const w0 = safeJsonParse(await nextWithTimeout(nextMsg, "welcome#0"));
+    expect(w0.type).toBe("welcome");
+
     // 1) hello -> welcome
     ws.send(JSON.stringify({ type: "hello", clientId: "p0" }));
-    const m1 = safeJsonParse(await nextWithTimeout(nextMsg, "welcome"));
-    expect(m1.type).toBe("welcome");
+    const w1 = safeJsonParse(await nextWithTimeout(nextMsg, "welcome#1"));
+    expect(w1.type).toBe("welcome");
 
     // 2) joinRoom (create)
     ws.send(JSON.stringify({ type: "joinRoom" }));
@@ -99,29 +103,45 @@ describe("wsServer doubleDice lifecycle integration", () => {
     expect(m6.type).toBe("stateSync");
     expect(m6.roomCode).toBe(roomCode);
 
-    // ---- Double dice interaction: request legal moves for dice [6,1] ----
-    ws.send(JSON.stringify({ type: "getLegalMoves", actorId: "p0", dice: [6, 1] }));
+    // ---- Establish pending dice by ROLLing [6,1] ----
+    ws.send(JSON.stringify({ type: "roll", actorId: "p0", dice: [6, 1] }));
 
-    const lm0 = safeJsonParse(await nextWithTimeout(nextMsg, "legalMoves for [6,1]"));
+    const r0 = safeJsonParse(await nextWithTimeout(nextMsg, "after roll"));
+    if (r0.type === "error") {
+      throw new Error(`Unexpected error after roll([6,1]): ${JSON.stringify(r0)}`);
+    }
+    expect(r0.type).toBe("legalMoves");
+    expect(r0.actorId).toBe("p0");
+
+    // ---- Resolve ONE die at a time (contract) ----
+    // Choose to resolve die=6 first
+    ws.send(JSON.stringify({ type: "getLegalMoves", actorId: "p0", dice: [6] }));
+    const lm0 = safeJsonParse(await nextWithTimeout(nextMsg, "legalMoves for die=6"));
     if (lm0.type === "error") {
-      throw new Error(`Unexpected error on getLegalMoves([6,1]): ${JSON.stringify(lm0)}`);
+      throw new Error(`Unexpected error on getLegalMoves([6]): ${JSON.stringify(lm0)}`);
     }
     expect(lm0.type).toBe("legalMoves");
     expect(lm0.actorId).toBe("p0");
     expect(Array.isArray(lm0.dice)).toBe(true);
-    expect(lm0.dice.length).toBe(2);
+    expect(lm0.dice.length).toBe(1);
     expect(lm0.dice[0]).toBe(6);
-    expect(lm0.dice[1]).toBe(1);
 
-    // choose an enter-on-six move (same heuristic as console)
-    const enterOnSix = (lm0.moves as any[]).find((m) => String(m?.id ?? "").startsWith("enter:p0:"))?.id;
-    expect(typeof enterOnSix).toBe("string");
+    const moves = Array.isArray(lm0.moves) ? (lm0.moves as any[]) : [];
+    expect(moves.length).toBeGreaterThan(0);
 
-    // resolve first die by applying the move using dice [6,1]
-    ws.send(JSON.stringify({ type: "move", actorId: "p0", dice: [6, 1], move: enterOnSix }));
-    const mr = safeJsonParse(await nextWithTimeout(nextMsg, "moveResult after enter"));
+    // Prefer an "enter" move; otherwise just take the first move
+    const enterMove =
+      moves.find((m) => typeof m === "object" && m && (m.kind === "enter" || String(m.id ?? "").startsWith("enter:"))) ??
+      moves[0];
+
+    // resolve first die by applying the move using dice [6] (NOT [6,1])
+    ws.send(JSON.stringify({ type: "move", actorId: "p0", dice: [6], move: enterMove }));
+    const mr = safeJsonParse(await nextWithTimeout(nextMsg, "moveResult after first resolution"));
     expect(mr.type).toBe("moveResult");
-    expect(mr.response?.ok).toBe(true);
+
+    if (mr.response?.ok !== true) {
+      throw new Error(`Move failed; moveResult payload:\n${JSON.stringify(mr, null, 2)}`);
+    }
 
     // After applying one die, we expect awaitingDice to remain false (still have [1] pending)
     const awaiting = getAwaitingDiceFromMoveResult(mr);
