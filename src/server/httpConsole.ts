@@ -2,19 +2,27 @@
 //
 // FULL FILE REPLACEMENT.
 //
-// Goals / hard fixes:
-// - Pending dice list does NOT collapse when inspecting a single die (we never overwrite pendingDiceUI from legalMoves).
-// - getLegalMoves always sends EXACTLY ONE die when pending dice exist.
-// - move always spends EXACTLY ONE selected die (we send only the selected die; on ok, we remove it by index from pendingDiceUI).
-// - UI never shows awaitingDice=true while also pretending pending dice exist (pendingDiceUI is cleared whenever awaitingDice becomes true).
-// - Layout reorder per request: Roll/Resolve/Apply at top-left; Connection/Start/Turn below.
-// - No "Get Moves" button. Moves auto-fetch when selecting a pending die (toggleable).
+// Goals / fixes included:
+// 1) Double-dice resolve UX: after a successful move, if pending dice remain, auto-fetch legal moves for the remaining selected die
+//    (and always clear stale moves immediately after a move).
+// 2) Start button is always visible (it is no longer hidden when auto-ready is enabled).
+// 3) Ready controls are always visible; when auto-ready is ON they are disabled (greyed out), when auto-ready is OFF they are enabled.
+//
+// Notes:
+// - This is a debug console. It intentionally mirrors protocol behavior and does not enforce gameplay "smarts" beyond keeping UI state consistent.
 
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 
+type StartHttpConsoleOptions = {
+  port?: number;
+  httpPort?: number; // legacy
+  host?: string;
+  defaultWsUrl?: string;
+};
+
 export function startHttpConsole(...args: any[]) {
-  const first = args[0];
-  const second = args[1];
+  const first = args[0] as unknown;
+  const second = args[1] as unknown;
 
   let port = 8788;
   let host: string | undefined = undefined;
@@ -23,14 +31,21 @@ export function startHttpConsole(...args: any[]) {
     port = first;
     if (typeof second === "string") host = second;
   } else if (first && typeof first === "object") {
-    if (typeof first.httpPort === "number") port = first.httpPort;
-    else if (typeof first.port === "number") port = first.port;
-    if (typeof first.host === "string") host = first.host;
+    const o = first as StartHttpConsoleOptions;
+    if (typeof o.httpPort === "number") port = o.httpPort;
+    else if (typeof o.port === "number") port = o.port;
+    if (typeof o.host === "string") host = o.host;
   }
 
   const server = http.createServer((req, res) => serveHttpConsole(req, res));
   server.listen(port, host);
-  return server;
+
+  // Keep parity with devServer expectations: return an object with .port (effective) where possible.
+  const addr = server.address();
+  const effectivePort =
+    addr && typeof addr === "object" && typeof addr.port === "number" ? addr.port : port;
+
+  return Object.assign(server, { port: effectivePort });
 }
 
 export function serveHttpConsole(req: IncomingMessage, res: ServerResponse) {
@@ -46,6 +61,13 @@ export function serveHttpConsole(req: IncomingMessage, res: ServerResponse) {
     res.statusCode = 200;
     res.setHeader("content-type", "text/plain; charset=utf-8");
     res.end("ok");
+    return;
+  }
+
+  // Optional: quiet the favicon 404 noise
+  if (url === "/favicon.ico") {
+    res.statusCode = 204;
+    res.end();
     return;
   }
 
@@ -341,9 +363,20 @@ function html(): string {
         </div>
       </div>
 
+      <div class="checkRow">
+        <label title="When ON, the console automatically calls setReady(true) after joining a room.">
+          <input id="optAutoReady" type="checkbox" checked /> auto-ready (debug)
+        </label>
+      </div>
+
+      <!-- Ready controls always visible; disabled when auto-ready is ON -->
       <div class="row" style="margin-top:6px;">
         <button id="btnReadyTrue" disabled>Ready: true</button>
         <button id="btnReadyFalse" disabled>Ready: false</button>
+      </div>
+
+      <!-- Start is always visible -->
+      <div class="row" style="margin-top:6px;">
         <button id="btnStart" disabled class="primary">Start</button>
       </div>
 
@@ -416,6 +449,7 @@ function html(): string {
   const optKillRollEl = document.getElementById("optKillRoll");
   const optTeamPlayEl = document.getElementById("optTeamPlay");
   const teamCountEl = document.getElementById("teamCount");
+  const optAutoReadyEl = document.getElementById("optAutoReady");
 
   const btnConnectEl = document.getElementById("btnConnect");
   const btnDisconnectEl = document.getElementById("btnDisconnect");
@@ -484,6 +518,9 @@ function html(): string {
 
   // Auto-fetch moves when selecting a pending die
   let autoFetch = true;
+
+  // Auto-ready: when ON, we send setReady(true) after joining a room.
+  let autoReadySentForRoom = null;
 
   function addLine(s){ logEl.value += s + "\\n"; logEl.scrollTop = logEl.scrollHeight; }
   function addOk(s){ addLine("[OK] " + s); }
@@ -615,6 +652,10 @@ function html(): string {
       radio.checked = (i === selectedPendingIdx);
       radio.onchange = () => {
         selectedPendingIdx = i;
+        // Always clear moves immediately on die change to avoid stale UI if request fails.
+        lastMoves = [];
+        renderMoves([]);
+        moveIndexEl.value = "";
         syncUI();
         if (autoFetch) requestMovesForSelectedPendingDie();
       };
@@ -685,9 +726,7 @@ function html(): string {
 
     const dd =
       msg?.lobby?.gameConfig?.options?.doubleDice ??
-      msg?.lobby?.gameConfig?.options?.doubleDice ??
       deepGet(msg, ["state","config","options","doubleDice"]) ??
-      deepGet(msg, ["response","result","nextState","config","options","doubleDice"]) ??
       deepGet(msg, ["response","result","nextState","config","options","doubleDice"]);
 
     if (typeof dd === "boolean") optDoubleDiceServer = dd;
@@ -717,6 +756,9 @@ function html(): string {
     if (turnAwaitingDice === true){
       pendingDiceUI = [];
       selectedPendingIdx = 0;
+      lastMoves = [];
+      renderMoves([]);
+      moveIndexEl.value = "";
     }
   }
 
@@ -746,8 +788,11 @@ function html(): string {
     btnHelloEl.disabled = !connected;
     btnJoinEl.disabled = !connected;
 
-    btnReadyTrueEl.disabled = !joined;
-    btnReadyFalseEl.disabled = !joined;
+    // Ready buttons are always visible. When auto-ready is ON, they are disabled.
+    const autoReadyOn = !!optAutoReadyEl.checked;
+    btnReadyTrueEl.disabled = !joined || autoReadyOn;
+    btnReadyFalseEl.disabled = !joined || autoReadyOn;
+
     btnStartEl.disabled = !joined;
 
     const canRollNow = joined && (turnAwaitingDice === true) && (!pendingDiceUI || pendingDiceUI.length === 0);
@@ -789,10 +834,22 @@ function html(): string {
     const idx = Math.max(0, Math.min(selectedPendingIdx, pendingDiceUI.length-1));
     const die = pendingDiceUI[idx];
 
-    // HARD FIX: exactly one die when pending dice exist.
+    // Exactly one die per request (current contract).
     sendRaw({ type: "getLegalMoves", actorId, dice: [die] });
     lastAction = "getLegalMoves die=" + String(die);
     syncUI();
+  }
+
+  function maybeSendAutoReady(msg){
+    if (!optAutoReadyEl.checked) return;
+    const room = msg && msg.lobby && msg.lobby.roomCode ? String(msg.lobby.roomCode) : null;
+    if (!room) return;
+    if (autoReadySentForRoom === room) return;
+
+    sendRaw({ type: "setReady", ready: true });
+    autoReadySentForRoom = room;
+    lastAction = "autoReady setReady true";
+    addOk("auto-ready: setReady true");
   }
 
   function handleMsg(msg){
@@ -825,6 +882,9 @@ function html(): string {
       const pid = (typeof msg.actorId === "string" ? msg.actorId : (typeof msg.playerId === "string" ? msg.playerId : ""));
       if (pid) actorIdEl.value = pid;
 
+      // Reset auto-ready latch when entering a new room join flow.
+      autoReadySentForRoom = null;
+
       lastAction = "roomJoined";
       addOk("roomJoined room=" + msg.roomCode + " actorId=" + (pid || "undefined"));
       syncUI();
@@ -834,6 +894,7 @@ function html(): string {
     if (msg.type === "lobbySync"){
       lastAction = "lobbySync";
       extractTurnFields(msg);
+      maybeSendAutoReady(msg);
       syncUI();
       return;
     }
@@ -859,7 +920,6 @@ function html(): string {
 
     if (msg.type === "legalMoves"){
       // IMPORTANT: Do NOT overwrite pendingDiceUI from server reply.
-      // Server reply dice is often a single die: [6] or [1] because of the "exactly one die" contract.
       lastMoves = msg.moves || [];
       renderMoves(lastMoves);
       renderPendingDiceList();
@@ -895,16 +955,23 @@ function html(): string {
         if (selectedPendingIdx >= pendingDiceUI.length) selectedPendingIdx = Math.max(0, pendingDiceUI.length-1);
       }
 
+      // Always clear stale moves immediately after a successful move.
+      lastMoves = [];
+      renderMoves([]);
+      moveIndexEl.value = "";
+
       // Update turn fields from moveResult (prefer response.result.turn)
       extractTurnFields(msg);
 
-      // If no more pending dice, clear moves and moveIndex. (Next legalMoves will repopulate.)
-      if (!pendingDiceUI || pendingDiceUI.length === 0){
-        lastMoves = [];
-        renderMoves([]);
-        moveIndexEl.value = "";
+      // If pending dice remain, auto-fetch moves for the remaining selected die (if autoFetch is on).
+      if (Array.isArray(pendingDiceUI) && pendingDiceUI.length > 0){
+        renderPendingDiceList();
+        syncUI();
+        if (autoFetch) requestMovesForSelectedPendingDie();
+        return;
       }
 
+      // No pending dice remain.
       renderPendingDiceList();
       syncUI();
       return;
@@ -922,6 +989,11 @@ function html(): string {
     lastAction = "autoFetch=" + (autoFetch ? "on" : "off");
     syncUI();
     if (autoFetch) requestMovesForSelectedPendingDie();
+  };
+
+  optAutoReadyEl.onchange = () => {
+    lastAction = "autoReady=" + (optAutoReadyEl.checked ? "on" : "off");
+    syncUI();
   };
 
   btnConnectEl.onclick = () => {
@@ -1066,10 +1138,14 @@ function html(): string {
     pendingDiceUI = dice.slice();
     selectedPendingIdx = 0;
 
+    // Clear stale moves as we begin a new resolve set.
+    lastMoves = [];
+    renderMoves([]);
+    moveIndexEl.value = "";
+
     sendRaw({ type: "roll", actorId, dice });
     lastAction = "roll dice=" + JSON.stringify(dice);
 
-    // Immediately refresh moves for selected die if enabled.
     renderPendingDiceList();
     syncUI();
     if (autoFetch) requestMovesForSelectedPendingDie();
@@ -1091,7 +1167,7 @@ function html(): string {
 
     const die = pendingDiceUI[Math.max(0, Math.min(selectedPendingIdx, pendingDiceUI.length-1))];
 
-    // HARD FIX: always spend exactly one selected die.
+    // Always spend exactly one selected die.
     sendRaw({ type: "move", actorId, dice: [die], move: lastMoves[idx] });
     lastAction = "move idx=" + idx + " die=" + String(die);
     syncUI();
