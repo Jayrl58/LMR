@@ -2,13 +2,13 @@
 //
 // FULL FILE REPLACEMENT.
 //
-// Fixes:
-// - Removes TypeScript annotations from browser JS (prevents SyntaxError).
-// - Correctly interprets moveResult payload: uses msg.response.ok (per protocol.ts).
-// - White/legible UI.
-// - Individual dice lines.
-// - Die-resolution order choice.
-// - "Last moveResult" box persists moveResult even if stateSync arrives immediately.
+// Goals / hard fixes:
+// - Pending dice list does NOT collapse when inspecting a single die (we never overwrite pendingDiceUI from legalMoves).
+// - getLegalMoves always sends EXACTLY ONE die when pending dice exist.
+// - move always spends EXACTLY ONE selected die (we send only the selected die; on ok, we remove it by index from pendingDiceUI).
+// - UI never shows awaitingDice=true while also pretending pending dice exist (pendingDiceUI is cleared whenever awaitingDice becomes true).
+// - Layout reorder per request: Roll/Resolve/Apply at top-left; Connection/Start/Turn below.
+// - No "Get Moves" button. Moves auto-fetch when selecting a pending die (toggleable).
 
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 
@@ -194,19 +194,74 @@ function html(): string {
       color:var(--text);
     }
     input[type="checkbox"]{ width:16px; height:16px; }
+    .linkish{
+      font-size:12px;
+      color:var(--accent);
+      text-decoration:underline;
+      cursor:pointer;
+      user-select:none;
+    }
+    .linkish.disabled{
+      color:var(--muted);
+      text-decoration:none;
+      cursor:not-allowed;
+    }
   </style>
 </head>
 <body>
   <div class="row" style="justify-content:space-between;">
     <div>
       <h2 style="margin:0 0 6px 0;">LMR - Game Console</h2>
-      <div class="small">White theme + individual dice lines (Double Dice verification)</div>
+      <div class="small">Double Dice verification (one-die resolve + stable pending dice UI)</div>
     </div>
     <div class="small mono">http://localhost:8788</div>
   </div>
 
   <div class="grid" style="margin-top:12px;">
     <div class="card">
+
+      <!-- TOP-LEFT: Roll / Resolve / Apply -->
+      <h3 style="margin:0 0 10px 0;">Roll Dice (individual lines)</h3>
+      <div class="small">Set each die value, then Submit Roll.</div>
+      <div style="margin-top:8px;">
+        <div class="diceList" id="rollDiceList"></div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button id="btnSubmitRoll" disabled class="primary">Submit Roll</button>
+        <button id="btnClearRoll" disabled>Clear Roll</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <h3 style="margin:0 0 10px 0;">Resolve Dice</h3>
+      <div class="small">Select a pending die. Moves auto-refresh (optional).</div>
+
+      <div class="row" style="margin-top:6px;">
+        <span id="autoFetchLink" class="linkish disabled">auto-fetch moves on selection</span>
+        <span class="small mono" id="autoFetchState">(off)</span>
+      </div>
+
+      <div style="margin-top:8px;">
+        <div class="diceList" id="pendingDiceList"></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <h3 style="margin:0 0 10px 0;">Apply Move</h3>
+      <div class="row">
+        <div style="flex:1;">
+          <label>Move Index</label><br/>
+          <input id="moveIndex" style="width:100%;" placeholder="click a move on the right" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <button id="btnMove" disabled class="primary">Send Move (spends selected die)</button>
+        <button id="btnClearMoves" disabled>Clear Moves</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- BELOW: Connection / Start / Turn Panel -->
       <h3 style="margin:0 0 10px 0;">Connection</h3>
 
       <div class="row">
@@ -243,8 +298,6 @@ function html(): string {
           <input id="actorId" style="width:100%;" placeholder="p0 / p1 / ..." />
         </div>
       </div>
-
-      <div class="divider"></div>
 
       <div class="row">
         <button class="primary" id="btnConnect">Connect</button>
@@ -303,6 +356,7 @@ function html(): string {
         <div>awaitingDice</div><div id="awaitingDice">(unknown)</div>
         <div>doubleDice (server)</div><div id="doubleDice">(unknown)</div>
         <div>doubleDice (effective)</div><div id="doubleDiceEff">(unknown)</div>
+        <div>pendingDice (UI)</div><div id="pendingDiceUI">(none)</div>
         <div>bankedExtra</div><div id="bankedExtra">(unknown)</div>
         <div>eligibleToRoll</div><div id="eligibleToRoll">(unknown)</div>
         <div>eligibleToResolve</div><div id="eligibleToResolve">(unknown)</div>
@@ -313,44 +367,6 @@ function html(): string {
       <div class="row">
         <span class="pill" id="lastActionPill">lastAction</span>
         <span class="small mono" id="lastActionText">(none)</span>
-      </div>
-
-      <div class="divider"></div>
-
-      <h3 style="margin:0 0 10px 0;">Roll Dice (individual lines)</h3>
-      <div class="small">Select a die slot, set its value, then Submit Roll.</div>
-      <div style="margin-top:8px;">
-        <div class="diceList" id="rollDiceList"></div>
-      </div>
-      <div class="row" style="margin-top:10px;">
-        <button id="btnSubmitRoll" disabled class="primary">Submit Roll</button>
-        <button id="btnClearRoll" disabled>Clear Roll</button>
-      </div>
-
-      <div class="divider"></div>
-
-      <h3 style="margin:0 0 10px 0;">Resolve Dice (order choice)</h3>
-      <div class="small">Select which pending die to resolve first, then Get Moves.</div>
-      <div style="margin-top:8px;">
-        <div class="diceList" id="pendingDiceList"></div>
-      </div>
-
-      <div class="row" style="margin-top:10px;">
-        <button id="btnGetMoves" disabled class="primary">Get Moves (selected die)</button>
-      </div>
-
-      <div class="divider"></div>
-
-      <h3 style="margin:0 0 10px 0;">Apply Move</h3>
-      <div class="row">
-        <div style="flex:1;">
-          <label>Move Index</label><br/>
-          <input id="moveIndex" style="width:100%;" placeholder="click a move below" />
-        </div>
-      </div>
-      <div class="row" style="margin-top:8px;">
-        <button id="btnMove" disabled class="primary">Send Move</button>
-        <button id="btnClearMoves" disabled>Clear Moves</button>
       </div>
     </div>
 
@@ -412,9 +428,11 @@ function html(): string {
   const btnSubmitRollEl = document.getElementById("btnSubmitRoll");
   const btnClearRollEl = document.getElementById("btnClearRoll");
 
-  const btnGetMovesEl = document.getElementById("btnGetMoves");
   const btnMoveEl = document.getElementById("btnMove");
   const btnClearMovesEl = document.getElementById("btnClearMoves");
+
+  const autoFetchLinkEl = document.getElementById("autoFetchLink");
+  const autoFetchStateEl = document.getElementById("autoFetchState");
 
   const lastActionTextEl = document.getElementById("lastActionText");
   const lastActionPillEl = document.getElementById("lastActionPill");
@@ -424,6 +442,7 @@ function html(): string {
   const awaitingDiceEl = document.getElementById("awaitingDice");
   const doubleDiceEl = document.getElementById("doubleDice");
   const doubleDiceEffEl = document.getElementById("doubleDiceEff");
+  const pendingDiceUIEl = document.getElementById("pendingDiceUI");
   const bankedExtraEl = document.getElementById("bankedExtra");
   const eligibleToRollEl = document.getElementById("eligibleToRoll");
   const eligibleToResolveEl = document.getElementById("eligibleToResolve");
@@ -445,19 +464,26 @@ function html(): string {
   let connected = false;
   let joined = false;
 
+  // Moves shown in the right column (for last requested die)
   let lastMoves = [];
   let lastAction = "";
 
+  // Roll slots (always length = dicePerRoll())
   let rollSlots = [];
-  let selectedRollSlot = 0;
 
-  let pendingDice = [];
+  // Pending dice as the USER sees them (stable list)
+  // This is sourced from: last successful roll submission, then spent on each successful move.
+  let pendingDiceUI = [];
   let selectedPendingIdx = 0;
 
+  // Turn fields (from server messages)
   let turnNextActorId = null;
   let turnAwaitingDice = null;
   let optDoubleDiceServer = null;
   let bankedExtra = null;
+
+  // Auto-fetch moves when selecting a pending die
+  let autoFetch = true;
 
   function addLine(s){ logEl.value += s + "\\n"; logEl.scrollTop = logEl.scrollHeight; }
   function addOk(s){ addLine("[OK] " + s); }
@@ -516,7 +542,6 @@ function html(): string {
 
   function resetRollSlots(){
     rollSlots = new Array(dicePerRoll()).fill(null);
-    selectedRollSlot = 0;
   }
 
   function renderRollDiceList(){
@@ -528,13 +553,7 @@ function html(): string {
     for (let i=0;i<n;i++){
       const row = document.createElement("div");
       row.className = "diceRow";
-
-      const radio = document.createElement("input");
-      radio.type = "radio";
-      radio.name = "rollSlot";
-      radio.checked = (i === selectedRollSlot);
-      radio.onchange = () => { selectedRollSlot = i; syncUI(); };
-      row.appendChild(radio);
+      row.style.gridTemplateColumns = "1fr 90px 110px";
 
       const label = document.createElement("div");
       label.textContent = "Die " + (i+1);
@@ -573,23 +592,20 @@ function html(): string {
   function renderPendingDiceList(){
     pendingDiceListEl.innerHTML = "";
 
-    if (!Array.isArray(pendingDice) || pendingDice.length === 0){
+    if (!Array.isArray(pendingDiceUI) || pendingDiceUI.length === 0){
       const row = document.createElement("div");
       row.className = "diceRow";
-      row.style.gridTemplateColumns = "28px 1fr";
-      const spacer = document.createElement("div");
-      spacer.textContent = "";
+      row.style.gridTemplateColumns = "1fr";
       const msg = document.createElement("div");
       msg.textContent = "(no pending dice)";
-      row.appendChild(spacer);
       row.appendChild(msg);
       pendingDiceListEl.appendChild(row);
       return;
     }
 
-    if (selectedPendingIdx < 0 || selectedPendingIdx >= pendingDice.length) selectedPendingIdx = 0;
+    if (selectedPendingIdx < 0 || selectedPendingIdx >= pendingDiceUI.length) selectedPendingIdx = 0;
 
-    for (let i=0;i<pendingDice.length;i++){
+    for (let i=0;i<pendingDiceUI.length;i++){
       const row = document.createElement("div");
       row.className = "diceRow";
 
@@ -597,7 +613,11 @@ function html(): string {
       radio.type = "radio";
       radio.name = "pendingDie";
       radio.checked = (i === selectedPendingIdx);
-      radio.onchange = () => { selectedPendingIdx = i; syncUI(); };
+      radio.onchange = () => {
+        selectedPendingIdx = i;
+        syncUI();
+        if (autoFetch) requestMovesForSelectedPendingDie();
+      };
       row.appendChild(radio);
 
       const label = document.createElement("div");
@@ -606,7 +626,7 @@ function html(): string {
 
       const val = document.createElement("div");
       val.className = "diceValue right";
-      val.textContent = String(pendingDice[i]);
+      val.textContent = String(pendingDiceUI[i]);
       row.appendChild(val);
 
       const hint = document.createElement("div");
@@ -616,17 +636,6 @@ function html(): string {
 
       pendingDiceListEl.appendChild(row);
     }
-  }
-
-  function reorderDiceWithSelectedFirst(dice, selectedIdx){
-    if (!Array.isArray(dice) || dice.length === 0) return [];
-    const idx = Math.max(0, Math.min(selectedIdx ?? 0, dice.length-1));
-    const first = dice[idx];
-    const rest = [];
-    for (let i=0;i<dice.length;i++){
-      if (i !== idx) rest.push(dice[i]);
-    }
-    return [first, ...rest];
   }
 
   function renderMoves(moves){
@@ -649,12 +658,24 @@ function html(): string {
     }
   }
 
+  function setAutoFetchUi(){
+    const can = joined && Array.isArray(pendingDiceUI) && pendingDiceUI.length > 0;
+    autoFetchLinkEl.classList.toggle("disabled", !can);
+    autoFetchStateEl.textContent = autoFetch ? "(on)" : "(off)";
+    if (!can) autoFetchStateEl.textContent = "(off)";
+  }
+
   function extractTurnFields(msg){
+    // Prefer moveResult.response.result.turn when present (it is the authoritative "next").
+    const tFromMoveResult =
+      deepGet(msg, ["response","result","turn"]) ??
+      deepGet(msg, ["response","result","result","turn"]); // defensive
+
     const t =
+      tFromMoveResult ??
       msg.turn ??
       msg.game?.turn ??
       msg.state?.turn ??
-      msg.stateSync?.turn ??
       deepGet(msg, ["game","turn"]);
 
     if (t && typeof t === "object"){
@@ -663,24 +684,19 @@ function html(): string {
     }
 
     const dd =
-      msg.game?.options?.doubleDice ??
-      msg.game?.opts?.doubleDice ??
-      msg.state?.game?.options?.doubleDice ??
-      msg.state?.game?.opts?.doubleDice ??
-      msg.options?.doubleDice ??
-      deepGet(msg, ["game","config","doubleDice"]) ??
-      deepGet(msg, ["game","settings","doubleDice"]);
+      msg?.lobby?.gameConfig?.options?.doubleDice ??
+      msg?.lobby?.gameConfig?.options?.doubleDice ??
+      deepGet(msg, ["state","config","options","doubleDice"]) ??
+      deepGet(msg, ["response","result","nextState","config","options","doubleDice"]) ??
+      deepGet(msg, ["response","result","nextState","config","options","doubleDice"]);
 
     if (typeof dd === "boolean") optDoubleDiceServer = dd;
 
     const b =
       msg.turn?.bankedExtraRolls ??
       msg.turn?.bankedExtra ??
-      msg.turn?.extraRollsBanked ??
-      msg.turn?.pendingExtraRolls ??
       msg.game?.turn?.bankedExtraRolls ??
       msg.state?.turn?.bankedExtraRolls ??
-      msg.state?.turn?.bankedExtra ??
       undefined;
 
     if (typeof b === "number" && Number.isFinite(b)) bankedExtra = b;
@@ -696,6 +712,12 @@ function html(): string {
         if (typeof v === "number" && Number.isFinite(v)) bankedExtra = v;
       }
     }
+
+    // Hard invariant: if server says awaitingDice=true, there must be NO pending dice to resolve.
+    if (turnAwaitingDice === true){
+      pendingDiceUI = [];
+      selectedPendingIdx = 0;
+    }
   }
 
   function syncTurnPanel(){
@@ -704,10 +726,14 @@ function html(): string {
     doubleDiceEl.textContent = (typeof optDoubleDiceServer === "boolean") ? String(optDoubleDiceServer) : "(unknown)";
     doubleDiceEffEl.textContent = String(effectiveDoubleDice());
 
+    pendingDiceUIEl.textContent = (Array.isArray(pendingDiceUI) && pendingDiceUI.length)
+      ? JSON.stringify(pendingDiceUI)
+      : "(none)";
+
     bankedExtraEl.textContent = (bankedExtra === null || bankedExtra === undefined) ? "(unknown)" : String(bankedExtra);
 
-    const eligibleToRoll = (turnAwaitingDice === true);
-    const eligibleToResolve = Array.isArray(pendingDice) && pendingDice.length > 0;
+    const eligibleToRoll = (turnAwaitingDice === true) && (!pendingDiceUI || pendingDiceUI.length === 0);
+    const eligibleToResolve = Array.isArray(pendingDiceUI) && pendingDiceUI.length > 0;
 
     eligibleToRollEl.textContent = eligibleToRoll ? ("YES (roll " + dicePerRoll() + ")") : "NO";
     eligibleToResolveEl.textContent = eligibleToResolve ? "YES" : "NO";
@@ -724,14 +750,13 @@ function html(): string {
     btnReadyFalseEl.disabled = !joined;
     btnStartEl.disabled = !joined;
 
-    const canRollNow = joined && (turnAwaitingDice === true);
+    const canRollNow = joined && (turnAwaitingDice === true) && (!pendingDiceUI || pendingDiceUI.length === 0);
     btnSubmitRollEl.disabled = !canRollNow || !rollSlots.every(v => Number.isFinite(v) && v>=1 && v<=6);
     btnClearRollEl.disabled = !canRollNow;
 
-    btnGetMovesEl.disabled = !(joined && Array.isArray(pendingDice) && pendingDice.length > 0);
-
     const idx = Number(moveIndexEl.value);
-    btnMoveEl.disabled = !(joined && Number.isFinite(idx) && idx>=0 && idx<lastMoves.length);
+    const canResolve = joined && Array.isArray(pendingDiceUI) && pendingDiceUI.length > 0;
+    btnMoveEl.disabled = !(canResolve && Number.isFinite(idx) && idx>=0 && idx<lastMoves.length);
 
     btnClearMovesEl.disabled = !joined;
 
@@ -747,12 +772,27 @@ function html(): string {
     }
 
     lastActionTextEl.textContent = lastAction || "(none)";
+    setAutoFetchUi();
     syncTurnPanel();
   }
 
   function sendRaw(obj){
     if (!ws || ws.readyState !== 1) return;
     ws.send(JSON.stringify(obj));
+  }
+
+  function requestMovesForSelectedPendingDie(){
+    const actorId = (actorIdEl.value || "").trim();
+    if (!actorId) return;
+    if (!Array.isArray(pendingDiceUI) || pendingDiceUI.length === 0) return;
+
+    const idx = Math.max(0, Math.min(selectedPendingIdx, pendingDiceUI.length-1));
+    const die = pendingDiceUI[idx];
+
+    // HARD FIX: exactly one die when pending dice exist.
+    sendRaw({ type: "getLegalMoves", actorId, dice: [die] });
+    lastAction = "getLegalMoves die=" + String(die);
+    syncUI();
   }
 
   function handleMsg(msg){
@@ -771,7 +811,7 @@ function html(): string {
     }
 
     if (msg.type === "welcome"){
-      addOk("welcome serverVersion=" + (msg.serverVersion || "?"));
+      addOk("welcome serverVersion=" + (msg.serverVersion || "?") + " clientId=" + (msg.clientId || "?"));
       lastAction = "welcome";
       syncUI();
       return;
@@ -780,9 +820,13 @@ function html(): string {
     if (msg.type === "roomJoined"){
       joined = true;
       if (msg.roomCode) roomCodeEl.value = msg.roomCode;
-      if (msg.playerId) actorIdEl.value = msg.playerId;
+
+      // Protocol may provide actorId or playerId; use either.
+      const pid = (typeof msg.actorId === "string" ? msg.actorId : (typeof msg.playerId === "string" ? msg.playerId : ""));
+      if (pid) actorIdEl.value = pid;
+
       lastAction = "roomJoined";
-      addOk("roomJoined room=" + msg.roomCode + " actorId=" + msg.playerId);
+      addOk("roomJoined room=" + msg.roomCode + " actorId=" + (pid || "undefined"));
       syncUI();
       return;
     }
@@ -798,37 +842,38 @@ function html(): string {
       lastAction = "stateSync";
       extractTurnFields(msg);
 
-      renderRollDiceList();
-
+      // If server says we are awaitingDice, clear resolve UI; otherwise preserve pendingDiceUI.
       if (turnAwaitingDice === true){
-        pendingDice = [];
+        pendingDiceUI = [];
+        selectedPendingIdx = 0;
         lastMoves = [];
         renderMoves([]);
         moveIndexEl.value = "";
-        resetRollSlots();
-        renderRollDiceList();
-        renderPendingDiceList();
       }
 
+      renderRollDiceList();
+      renderPendingDiceList();
       syncUI();
       return;
     }
 
     if (msg.type === "legalMoves"){
+      // IMPORTANT: Do NOT overwrite pendingDiceUI from server reply.
+      // Server reply dice is often a single die: [6] or [1] because of the "exactly one die" contract.
       lastMoves = msg.moves || [];
-      const dice = Array.isArray(msg.dice) ? msg.dice : (typeof msg.die === "number" ? [msg.die] : []);
-      pendingDice = Array.isArray(dice) ? dice.slice() : [];
-      renderPendingDiceList();
       renderMoves(lastMoves);
-      lastAction = "legalMoves pendingDice=" + JSON.stringify(pendingDice) + " moves=" + lastMoves.length;
+      renderPendingDiceList();
+
+      const d = (Array.isArray(msg.dice) && msg.dice.length === 1) ? msg.dice[0] : undefined;
+      lastAction = "legalMoves for die=" + (typeof d === "number" ? String(d) : "?") + " moves=" + lastMoves.length;
       syncUI();
       return;
     }
 
     if (msg.type === "moveResult"){
-      const r = msg.response;
       lastMoveResultEl.value = JSON.stringify(msg, null, 2);
 
+      const r = msg.response;
       const ok = !!(r && typeof r === "object" && r.ok === true);
       lastAction = "moveResult ok=" + String(ok);
       addOk("moveResult ok=" + String(ok));
@@ -836,10 +881,31 @@ function html(): string {
       if (!ok){
         try{
           const reason = (r && typeof r === "object") ? (r.reason || r.error || r.message) : undefined;
-          if (reason) addErr("moveResult reason: " + String(reason));
+          if (reason) addErr("moveResult reason: " + JSON.stringify(reason));
         }catch(_){}
+        extractTurnFields(msg);
+        syncUI();
+        return;
       }
 
+      // On success: spend EXACTLY ONE selected die from pendingDiceUI (by index).
+      if (Array.isArray(pendingDiceUI) && pendingDiceUI.length > 0){
+        const idx = Math.max(0, Math.min(selectedPendingIdx, pendingDiceUI.length-1));
+        pendingDiceUI.splice(idx, 1);
+        if (selectedPendingIdx >= pendingDiceUI.length) selectedPendingIdx = Math.max(0, pendingDiceUI.length-1);
+      }
+
+      // Update turn fields from moveResult (prefer response.result.turn)
+      extractTurnFields(msg);
+
+      // If no more pending dice, clear moves and moveIndex. (Next legalMoves will repopulate.)
+      if (!pendingDiceUI || pendingDiceUI.length === 0){
+        lastMoves = [];
+        renderMoves([]);
+        moveIndexEl.value = "";
+      }
+
+      renderPendingDiceList();
       syncUI();
       return;
     }
@@ -848,6 +914,15 @@ function html(): string {
     extractTurnFields(msg);
     syncUI();
   }
+
+  autoFetchLinkEl.onclick = () => {
+    const can = joined && Array.isArray(pendingDiceUI) && pendingDiceUI.length > 0;
+    if (!can) return;
+    autoFetch = !autoFetch;
+    lastAction = "autoFetch=" + (autoFetch ? "on" : "off");
+    syncUI();
+    if (autoFetch) requestMovesForSelectedPendingDie();
+  };
 
   btnConnectEl.onclick = () => {
     const wsUrl = (wsUrlEl.value || "").trim();
@@ -874,6 +949,11 @@ function html(): string {
       connected = false;
       joined = false;
       ws = null;
+      pendingDiceUI = [];
+      selectedPendingIdx = 0;
+      lastMoves = [];
+      renderMoves([]);
+      renderPendingDiceList();
       addWarn("disconnected");
       lastAction = "disconnected";
       syncUI();
@@ -953,10 +1033,19 @@ function html(): string {
       options.boardOverride = Number(bo);
     }
 
+    // Starting a new game resets all local resolve state.
+    pendingDiceUI = [];
+    selectedPendingIdx = 0;
+    lastMoves = [];
+    renderMoves([]);
+    moveIndexEl.value = "";
+    renderPendingDiceList();
+
     sendRaw({ type: "startGame", playerCount, options });
     lastAction = "startGame playerCount=" + playerCount + " options=" + JSON.stringify(options);
 
     optDoubleDiceServer = null;
+    resetRollSlots();
     renderRollDiceList();
     syncUI();
   };
@@ -973,9 +1062,17 @@ function html(): string {
       return;
     }
 
+    // Local truth for resolve UI comes from the roll submission.
+    pendingDiceUI = dice.slice();
+    selectedPendingIdx = 0;
+
     sendRaw({ type: "roll", actorId, dice });
     lastAction = "roll dice=" + JSON.stringify(dice);
+
+    // Immediately refresh moves for selected die if enabled.
+    renderPendingDiceList();
     syncUI();
+    if (autoFetch) requestMovesForSelectedPendingDie();
   };
 
   btnClearRollEl.onclick = () => {
@@ -985,27 +1082,18 @@ function html(): string {
     syncUI();
   };
 
-  btnGetMovesEl.onclick = () => {
-    const actorId = (actorIdEl.value || "").trim();
-    if (!actorId) return;
-    if (!Array.isArray(pendingDice) || pendingDice.length === 0) return;
-
-    const dice = reorderDiceWithSelectedFirst(pendingDice, selectedPendingIdx);
-    sendRaw({ type: "getLegalMoves", actorId, dice });
-    lastAction = "getLegalMoves dice=" + JSON.stringify(dice);
-    syncUI();
-  };
-
   btnMoveEl.onclick = () => {
     const actorId = (actorIdEl.value || "").trim();
     const idx = Number(moveIndexEl.value);
     if (!actorId) return;
     if (!Number.isFinite(idx) || idx < 0 || idx >= lastMoves.length) return;
-    if (!Array.isArray(pendingDice) || pendingDice.length === 0) return;
+    if (!Array.isArray(pendingDiceUI) || pendingDiceUI.length === 0) return;
 
-    const dice = reorderDiceWithSelectedFirst(pendingDice, selectedPendingIdx);
-    sendRaw({ type: "move", actorId, dice, move: lastMoves[idx] });
-    lastAction = "move idx=" + idx + " dice=" + JSON.stringify(dice);
+    const die = pendingDiceUI[Math.max(0, Math.min(selectedPendingIdx, pendingDiceUI.length-1))];
+
+    // HARD FIX: always spend exactly one selected die.
+    sendRaw({ type: "move", actorId, dice: [die], move: lastMoves[idx] });
+    lastAction = "move idx=" + idx + " die=" + String(die);
     syncUI();
   };
 
@@ -1017,14 +1105,17 @@ function html(): string {
     syncUI();
   };
 
+  optDoubleDiceEl.onchange = () => {
+    resetRollSlots();
+    renderRollDiceList();
+    syncUI();
+  };
+
   // Init
   resetRollSlots();
   renderRollDiceList();
   renderPendingDiceList();
   syncUI();
-
-  optDoubleDiceEl.onchange = () => { resetRollSlots(); renderRollDiceList(); syncUI(); };
-
 })();
 </script>
 </body>
