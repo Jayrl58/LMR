@@ -1,71 +1,87 @@
-# LMR SNAPSHOT MANIFEST
+# LMR Snapshot Manifest
 
-Snapshot: **LMR_SNAPSHOT_2026-01-23_SERVER_ENGINE_DOUBLE_DICE_GREEN_v0.2.8_FULL**
+**Project:** Last Man Running (LMR) / Roll & Run  
+**Snapshot Type:** Canonical Documentation Alignment  
+**Status:** GREEN (Docs)  
+**Date:** 2026-01-25
+
+---
 
 ## Purpose
-This snapshot is a **restart-safe, green-state reference** capturing the LMR server engine and debug HTTP console at a stable point, with Double Dice fully exercised and verified.
 
-This snapshot is intended to allow a future session (or a new chat) to resume work **without re-deriving rules, contracts, or engine behavior**.
+This manifest records the authoritative state of the LMR project at the time of this snapshot.  
+It exists to support safe resumption, verification, and change tracking across sessions.
 
----
-
-## Snapshot Status
-- **ENGINE:** GREEN (all tests passing)
-- **SERVER:** Stable (WS + HTTP console)
-- **RULES AUTHORITY:** Locked (no changes in this snapshot)
-- **DOUBLE DICE:** Implemented and verified
-- **TEAM PLAY:** Present, not the focus of this snapshot
+This snapshot captures **documentation alignment only**.  
+No gameplay rules beyond those explicitly stated have been changed.
 
 ---
 
-## Included Components
+## Canonical Rule Documents
 
-### Core Engine
-- `src/engine/**`
-- Turn, move resolution, dice lifecycle
-- Double Dice contract enforced (exactly one die resolved per move)
+The following documents are **canonical and locked**:
 
-### Server
-- `src/server/wsServer.ts`
-- `src/server/devServer.ts`
-- `src/server/httpConsole.ts`
+- **Rules Authority:** `LMR_Rules_Authority_v1.7.3.md`
+- **Rules Anchor:** `Rules_Anchor_v1.7.3.md`
 
-### Debug HTTP Console
-Current console characteristics:
-- Debug-only (not a production UI)
-- Stable pending dice list
-- One-die-per-move enforcement
-- Auto-fetch legal moves for remaining die after a successful move
-- Start button always visible
-- Ready buttons always visible; disabled when auto-ready is ON
-
-### Tests
-- All unit, integration, scenario, and contract tests
-- Double Dice lifecycle tests passing
+These documents supersede all prior versions.
 
 ---
 
-## Explicit Exclusions
-- Production UI
-- Visual board rendering
-- Animations
-- Polished UX decisions (debug console only)
+## Summary of Changes Since Last Snapshot
+
+### Documentation Changes
+
+- Terminology standardized from **Extra Rolls** → **Extra Dice**
+- Explicit invariant locked:
+  - *Extra Dice follow the same rules, restrictions, and resolution mechanics as all other Dice*
+- **Kill Rolls** terminology retained as the name of the optional rule module
+- **Team Play win condition corrected**:
+  - Victory is awarded to the **first team to finish all of its Pegs**
+  - Game ends immediately upon this condition
+
+### Non-Changes (Explicit)
+
+- No board geometry changes
+- No movement rule changes
+- No dice resolution order changes
+- No engine logic changes captured in this snapshot
+- No UI behavior changes captured in this snapshot
 
 ---
 
-## Known Limitations / Deferred Items
-- Ready / Start UX polish (debug console acceptable for now)
-- Die forfeiture visual treatment (design agreed, not implemented)
-- Greyed-out dice with zero legal moves (planned)
+## Engine Status
+
+- Engine behavior is expected to conform to **Rules Authority v1.7.3**
+- Any deviations must be addressed before future snapshots are marked GREEN (Engine)
 
 ---
 
-## Resume Guarantee
-With this snapshot, a new session should:
-1. Run `npm install` (if needed)
-2. Run `npm test` → GREEN
-3. Run `npm run dev:server`
-4. Open `http://localhost:8788`
+## UI Status
 
-No rules or engine reinterpretation should be required.
+- HTTP Debug Console remains a **verification tool only**
+- UI behavior must reflect the canonical rules but is not locked by this snapshot
 
+---
+
+## Snapshot Integrity
+
+This snapshot is considered valid if and only if:
+
+- All documentation listed above is present and unmodified
+- No downstream files contradict the Rules Authority or Rules Anchor
+- Any future work references **v1.7.3** as the baseline
+
+---
+
+## Resume Pointer
+
+To resume work from this snapshot:
+
+1. Load **Rules Authority v1.7.3**
+2. Treat **Rules Anchor v1.7.3** as the interpretive contract
+3. Resume engine or UI work against these locked documents
+
+---
+
+**End of SNAPSHOT_MANIFEST**
