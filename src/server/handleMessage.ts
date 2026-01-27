@@ -408,6 +408,10 @@ export function handleClientMessage(
 
           (response.result as any).turn = nextTurn;
 
+          // Keep moveResult.response.turn consistent with result.turn (authoritative).
+          // Include remaining pending dice so clients never think dice cleared early.
+          (response as any).turn = { ...(nextTurn as any), pendingDice: remainingDice } as any;
+
           return {
             nextState,
             serverMessage: mkMoveResult(roomCode, response, reqId),
@@ -457,6 +461,10 @@ export function handleClientMessage(
         };
 
         (response.result as any).turn = nextTurn;
+
+        // Keep moveResult.response.turn consistent with result.turn (authoritative).
+        // Dice resolution is complete here, so pendingDice must be empty.
+        (response as any).turn = { ...(nextTurn as any), pendingDice: [] } as any;
 
         return {
           nextState,
