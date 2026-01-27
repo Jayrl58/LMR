@@ -1,66 +1,79 @@
 # LMR Snapshot Manifest
 
 **Project:** Last Man Running (LMR) / Roll & Run  
-**Snapshot Type:** Canonical Documentation Alignment  
-**Status:** GREEN (Docs)  
-**Date:** 2026-01-25
+**Snapshot Type:** Engine Messaging & Dice Lifecycle Milestone  
+**Status:** GREEN (Engine + Tests)  
+**Date:** 2026-01-27
 
 ---
 
 ## Purpose
 
-This manifest records the authoritative state of the LMR project at the time of this snapshot.  
-It exists to support safe resumption, verification, and change tracking across sessions.
+This manifest records a **logic and server-messaging milestone** in the LMR project.  
+It exists to support safe resumption, verification, and regression prevention.
 
-This snapshot captures **documentation alignment only**.  
-No gameplay rules beyond those explicitly stated have been changed.
+This snapshot captures **engine-facing server behavior**, not UI polish.
 
 ---
 
-## Canonical Rule Documents
+## Canonical Rule Documents (Unchanged)
 
-The following documents are **canonical and locked**:
+The following documents remain **canonical and locked**:
 
 - **Rules Authority:** `LMR_Rules_Authority_v1.7.3.md`
 - **Rules Anchor:** `Rules_Anchor_v1.7.3.md`
 
-These documents supersede all prior versions.
+No gameplay rule changes are introduced by this snapshot.
 
 ---
 
-## Summary of Changes Since Last Snapshot
+## Summary of Changes Since Prior Snapshot
 
-### Documentation Changes
+### Engine / Server Fixes
 
-- Terminology standardized from **Extra Rolls** → **Extra Dice**
-- Explicit invariant locked:
-  - *Extra Dice follow the same rules, restrictions, and resolution mechanics as all other Dice*
-- **Kill Rolls** terminology retained as the name of the optional rule module
-- **Team Play win condition corrected**:
-  - Victory is awarded to the **first team to finish all of its Pegs**
-  - Game ends immediately upon this condition
+- **Fixed `moveResult` turn inconsistency**:
+  - `pendingDice` is now preserved correctly after spending a single die from a multi-die roll
+  - `awaitingDice` now reflects true resolution state (only `true` when no pending dice remain)
+- Removed divergence between:
+  - `moveResult.response.turn`
+  - engine-derived `result.turn`
+  - subsequent `stateSync.turn`
 
-### Non-Changes (Explicit)
+### Contract Locking
 
+- Added a **server-level test** asserting:
+  - `moveResult.response.turn` mirrors engine/session turn state
+  - Pending dice and awaiting state cannot silently regress
+- This test will fail CI if the dice lifecycle messaging contract is violated.
+
+---
+
+## Explicit Non-Changes
+
+- No rules authority changes
 - No board geometry changes
-- No movement rule changes
-- No dice resolution order changes
-- No engine logic changes captured in this snapshot
-- No UI behavior changes captured in this snapshot
+- No movement or capture rule changes
+- No UI behavior is locked by this snapshot
+- HTTP debug console is explicitly **non-authoritative**
 
 ---
 
 ## Engine Status
 
-- Engine behavior is expected to conform to **Rules Authority v1.7.3**
-- Any deviations must be addressed before future snapshots are marked GREEN (Engine)
+- Engine logic for:
+  - double-dice
+  - pending dice resolution
+  - extra dice lifecycle
+  is **GREEN and verified**
+- Full test suite passes, including the new contract test
 
 ---
 
-## UI Status
+## UI / Debug Status
 
-- HTTP Debug Console remains a **verification tool only**
-- UI behavior must reflect the canonical rules but is not locked by this snapshot
+- HTTP console may lag or diverge from authoritative server messaging
+- WS-level inspection (`wsClient.ts`) is the preferred diagnostic tool
+- UI cleanup may occur in a future snapshot
 
 ---
 
@@ -68,9 +81,11 @@ These documents supersede all prior versions.
 
 This snapshot is considered valid if and only if:
 
-- All documentation listed above is present and unmodified
-- No downstream files contradict the Rules Authority or Rules Anchor
-- Any future work references **v1.7.3** as the baseline
+- Commits include:
+  - `Fix moveResult turn consistency: preserve pendingDice and awaitingDice after moves`
+  - `Add test enforcing moveResult turn consistency with pending dice`
+- All tests pass (`npm test`)
+- No uncommitted engine files are present in the snapshot ZIP
 
 ---
 
@@ -78,9 +93,11 @@ This snapshot is considered valid if and only if:
 
 To resume work from this snapshot:
 
-1. Load **Rules Authority v1.7.3**
-2. Treat **Rules Anchor v1.7.3** as the interpretive contract
-3. Resume engine or UI work against these locked documents
+1. Pull snapshot ZIP at this commit boundary
+2. Trust engine dice lifecycle and server turn messaging as canonical
+3. Continue with:
+   - UI reconciliation **or**
+   - further engine features (kill-roll, banking UX, etc.)
 
 ---
 
