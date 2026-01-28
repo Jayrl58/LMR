@@ -31,7 +31,7 @@ export type SessionState = {
    * Rule intent: if you resolve a 6 first while another die remains, you don't
    * get to roll immediately; the extra roll is banked until the pending dice are done.
    */
-  bankedExtraDice?: number;
+  bankedExtraRolls?: number;
 };
 
 export type HandleResult = {
@@ -55,7 +55,7 @@ function mkStateSync(roomCode: string, s: SessionState, reqId?: string): ServerM
       roomCode,
       state: serializeState(s.game),
       stateHash: hashState(s.game),
-      turn: { ...(s.turn as any), pendingDice: s.pendingDice ?? [], bankedExtraDice: s.bankedExtraDice ?? 0 } as any,
+      turn: s.turn,
     } as any,
     reqId
   );
@@ -66,13 +66,12 @@ function mkLegalMoves(
   actorId: string,
   dice: number[],
   moves: unknown[],
-  turn?: any,
   reqId?: string
 ): ServerMessage {
   // actorId here is the RECIPIENT who may submit the move.
   // Send both dice (preferred) and die (legacy) for compatibility.
   const die = dice[0];
-  return withReqId({ type: "legalMoves", roomCode, actorId, dice, die, moves, ...(turn ? { turn } : {}) } as any, reqId);
+  return withReqId({ type: "legalMoves", roomCode, actorId, dice, die, moves } as any, reqId);
 }
 
 function mkMoveResult(roomCode: string, response: any, reqId?: string): ServerMessage {
@@ -197,32 +196,13 @@ export function handleClientMessage(
         };
       }
 
-      const banked0 = Number.isInteger((state as any).bankedExtraDice)
-        ? ((state as any).bankedExtraDice as number)
-        : (Number.isInteger((state as any).bankedExtraRolls)
-            ? ((state as any).bankedExtraRolls as number)
-            : 0);
+      const rollerId = String(state.turn.nextActorId);
 
-      // Banking semantics (Option C): when banked extra rolls exist, the next roll must be exactly ONE die
-      // (banked rolls are rolled one-at-a-time, even if doubleDice is enabled).
-      if (banked0 > 0 && dice.length !== 1) {
-        return {
-          nextState: state,
-          serverMessage: mkError(
-            "BAD_TURN_STATE",
-            "When banked extra dice exist, roll must specify exactly one die.",
-            reqId
-          ),
-        };
-      }
-
-const rollerId = String(state.turn.nextActorId);
-      // Consume one banked extra die *when a roll is actually taken*.
+      // Consume one banked extra roll *when a roll is actually taken*.
+      const banked0 = Number.isInteger(state.bankedExtraRolls)
+        ? (state.bankedExtraRolls as number)
+        : 0;
       const bankedAfterConsume = banked0 > 0 ? banked0 - 1 : 0;
-
-      // Earned extra rolls are determined by the ROLL outcome (not by what die you later spend).
-      const bankedEarned = isExtraRollFromDice(dice) ? 1 : 0;
-      const bankedAfterRoll = bankedAfterConsume + bankedEarned;
 
       // Choose who ACTS for this roll (may be teammate).
       const recipientId = String(
@@ -245,7 +225,7 @@ const rollerId = String(state.turn.nextActorId);
           turn: nextTurn,
           pendingDice: undefined,
           actingActorId: undefined,
-          bankedExtraDice: bankedAfterRoll,
+          bankedExtraRolls: 0, // any banked was consumed by taking this roll, and it yielded nothing actionable
         };
 
         return {
@@ -261,12 +241,12 @@ const rollerId = String(state.turn.nextActorId);
         turn: nextTurn,
         pendingDice: dice,
         actingActorId: recipientId,
-        bankedExtraDice: bankedAfterRoll,
+        bankedExtraRolls: bankedAfterConsume,
       };
 
       return {
         nextState,
-        serverMessage: mkLegalMoves(roomCode, recipientId, dice, moves, { ...(nextTurn as any), pendingDice: dice, bankedExtraDice: bankedAfterRoll }, reqId),
+        serverMessage: mkLegalMoves(roomCode, recipientId, dice, moves, reqId),
       };
     }
 
@@ -325,23 +305,7 @@ const rollerId = String(state.turn.nextActorId);
 
       return {
         nextState: state,
-        serverMessage: mkLegalMoves(
-          roomCode,
-          recipientId,
-          dice,
-          moves,
-          {
-            ...(state.turn as any),
-            awaitingDice: state.turn.awaitingDice,
-            pendingDice: Array.isArray(state.pendingDice) ? state.pendingDice : [],
-            bankedExtraDice: Number.isInteger((state as any).bankedExtraDice)
-              ? ((state as any).bankedExtraDice as number)
-              : (Number.isInteger((state as any).bankedExtraRolls)
-                  ? ((state as any).bankedExtraRolls as number)
-                  : 0),
-          } as any,
-          reqId
-        ),
+        serverMessage: mkLegalMoves(roomCode, recipientId, dice, moves, reqId),
       };
     }
 
@@ -409,12 +373,25 @@ const rollerId = String(state.turn.nextActorId);
         const engineTurn = (response.result as any).turn ?? state.turn;
 
         const teamPlayOn = nextGame?.config?.options?.teamPlay === true;
+        const killRollOn = nextGame?.config?.options?.killRoll === true;
 
-        // bank extra rolls are earned by the ROLL outcome (in the roll handler)
-        const banked0 = Number.isInteger(state.bankedExtraDice)
-          ? (state.bankedExtraDice as number)
+        // bank extra rolls earned by THIS die spend
+        const banked0 = Number.isInteger(state.bankedExtraRolls)
+          ? (state.bankedExtraRolls as number)
           : 0;
-        const banked1 = banked0;
+        const bankedEarned = isExtraRollFromDice(diceUsed) ? 1 : 0;
+
+        // Kill-roll (Option C semantics): any successful capture banks +1 extra die.
+        // (Not +1 per capture; the tests currently assert +1 total per capturing move.)
+        const captureCount =
+          (((response.result as any)?.move?.captures?.length as number | undefined) ??
+            ((response.result as any)?.result?.move?.captures?.length as number | undefined) ??
+            ((response as any)?.result?.move?.captures?.length as number | undefined) ??
+            0) ||
+          0;
+        const killRollEarned = killRollOn && captureCount > 0 ? 1 : 0;
+
+        const banked1 = banked0 + bankedEarned + killRollEarned;
 
         const delegated = state.actingActorId && state.actingActorId !== rollerId;
 
@@ -438,14 +415,10 @@ const rollerId = String(state.turn.nextActorId);
             turn: nextTurn,
             pendingDice: remainingDice,
             actingActorId: undefined, // next resolution may be delegated again
-            bankedExtraDice: banked1,
+            bankedExtraRolls: banked1,
           };
 
           (response.result as any).turn = nextTurn;
-
-          // Keep moveResult.response.turn consistent with result.turn (authoritative).
-          // Include remaining pending dice so clients never think dice cleared early.
-          (response as any).turn = { ...(nextTurn as any), pendingDice: remainingDice, bankedExtraDice: banked1 } as any;
 
           return {
             nextState,
@@ -492,14 +465,10 @@ const rollerId = String(state.turn.nextActorId);
           turn: nextTurn,
           pendingDice: undefined,
           actingActorId: undefined,
-          bankedExtraDice: banked1,
+          bankedExtraRolls: banked1,
         };
 
         (response.result as any).turn = nextTurn;
-
-        // Keep moveResult.response.turn consistent with result.turn (authoritative).
-        // Dice resolution is complete here, so pendingDice must be empty.
-        (response as any).turn = { ...(nextTurn as any), pendingDice: [], bankedExtraDice: banked1 } as any;
 
         return {
           nextState,
