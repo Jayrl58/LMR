@@ -176,6 +176,25 @@ export function handleClientMessage(
         };
       }
 
+
+      // Invariant A: when banked extra dice exist, only a single die may be rolled (even if doubleDice is on).
+      // Tests may populate either `bankedExtraDice` (preferred) or legacy `bankedExtraRolls`.
+      const _bankedExtraDice =
+        Number.isInteger((state as any).bankedExtraDice) ? ((state as any).bankedExtraDice as number) :
+        Number.isInteger((state as any).bankedExtraRolls) ? ((state as any).bankedExtraRolls as number) :
+        0;
+
+      if (_bankedExtraDice > 0 && Array.isArray((msg as any).dice) && (msg as any).dice.length !== 1) {
+        return {
+          nextState: state,
+          serverMessage: mkError(
+            "BAD_ROLL",
+            "When banked extra dice exist, you must roll exactly one die.",
+            reqId
+          ),
+        };
+      }
+
       // If there are still pending dice to resolve, a new roll is not allowed.
       if (Array.isArray(state.pendingDice) && state.pendingDice.length > 0) {
         return {
@@ -198,11 +217,16 @@ export function handleClientMessage(
 
       const rollerId = String(state.turn.nextActorId);
 
-      // Consume one banked extra roll *when a roll is actually taken*.
-      const banked0 = Number.isInteger(state.bankedExtraRolls)
-        ? (state.bankedExtraRolls as number)
-        : 0;
+      // Invariant B: banked extra dice are consumed on roll (not on move).
+      // Prefer `bankedExtraDice` (tests) but accept legacy `bankedExtraRolls`.
+      const banked0 =
+        Number.isInteger((state as any).bankedExtraDice) ? ((state as any).bankedExtraDice as number) :
+        Number.isInteger((state as any).bankedExtraRolls) ? ((state as any).bankedExtraRolls as number) :
+        0;
+
       const bankedAfterConsume = banked0 > 0 ? banked0 - 1 : 0;
+      const earnedFromRoll = dice.length === 1 && (dice[0] === 1 || dice[0] === 6) ? 1 : 0;
+      const bankedAfter = bankedAfterConsume + earnedFromRoll;
 
       // Choose who ACTS for this roll (may be teammate).
       const recipientId = String(
@@ -225,7 +249,8 @@ export function handleClientMessage(
           turn: nextTurn,
           pendingDice: undefined,
           actingActorId: undefined,
-          bankedExtraRolls: 0, // any banked was consumed by taking this roll, and it yielded nothing actionable
+          bankedExtraDice: bankedAfter,
+          bankedExtraRolls: bankedAfter, // consumed one banked die; may also have earned from rolling 1/6
         };
 
         return {
@@ -241,12 +266,18 @@ export function handleClientMessage(
         turn: nextTurn,
         pendingDice: dice,
         actingActorId: recipientId,
-        bankedExtraRolls: bankedAfterConsume,
+        bankedExtraDice: bankedAfter,
+        bankedExtraRolls: bankedAfter,
       };
+
+            const turnForMsg: any = { ...nextTurn };
+      if (typeof bankedAfter === "number" && bankedAfter > 0) {
+        turnForMsg.bankedExtraDice = bankedAfter;
+      }
 
       return {
         nextState,
-        serverMessage: mkLegalMoves(roomCode, recipientId, dice, moves, reqId),
+        serverMessage: ({ ...(mkLegalMoves(roomCode, recipientId, dice, moves, reqId) as any), turn: turnForMsg } as any),
       };
     }
 
@@ -418,7 +449,9 @@ export function handleClientMessage(
             bankedExtraRolls: banked1,
           };
 
-          (response.result as any).turn = nextTurn;
+          (response as any).turn = { ...nextTurn, pendingDice: remainingDice } as any;
+          (response.result as any).turn = (response as any).turn;
+
 
           return {
             nextState,
@@ -468,7 +501,9 @@ export function handleClientMessage(
           bankedExtraRolls: banked1,
         };
 
-        (response.result as any).turn = nextTurn;
+        (response as any).turn = { ...nextTurn, pendingDice: undefined } as any;
+          (response.result as any).turn = (response as any).turn;
+
 
         return {
           nextState,
