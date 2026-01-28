@@ -235,9 +235,12 @@ export function handleClientMessage(
 
       const moves = legalMoves(state.game as any, recipientId as any, dice as any) as any[];
 
-      // Auto-pass when no legal moves (turn owner advances)
+      // Auto-pass when no legal moves.
+      // Invariant K: the turn must NOT pass while banked extra dice remain.
       if (moves.length === 0) {
-        const nextActorId = computeNextActorId(state.game as any, rollerId);
+        const nextActorId = bankedAfter > 0
+          ? rollerId
+          : computeNextActorId(state.game as any, rollerId);
         const nextTurn: TurnInfo = {
           ...state.turn,
           nextActorId,
@@ -407,13 +410,12 @@ export function handleClientMessage(
         const killRollOn = nextGame?.config?.options?.killRoll === true;
 
         // bank extra rolls earned by THIS die spend
-        const banked0 =
-          Number.isInteger((state as any).bankedExtraDice) ? ((state as any).bankedExtraDice as number) :
-          Number.isInteger((state as any).bankedExtraRolls) ? ((state as any).bankedExtraRolls as number) :
-          0;
+        const banked0 = Number.isInteger(state.bankedExtraRolls)
+          ? (state.bankedExtraRolls as number)
+          : 0;
         const bankedEarned = isExtraRollFromDice(diceUsed) ? 1 : 0;
 
-        // Kill-roll (Option C semantics): any successful capture banks +1 extra die.
+        // Kill-roll (glossary-aligned): any successful kill/capture (sending an opponent peg to base) banks +1 extra die.
         // (Not +1 per capture; the tests currently assert +1 total per capturing move.)
         const captureCount =
           (((response.result as any)?.move?.captures?.length as number | undefined) ??
@@ -422,6 +424,8 @@ export function handleClientMessage(
             0) ||
           0;
         const killRollEarned = killRollOn && captureCount > 0 ? 1 : 0;
+        // Invariant: one move (one peg advanced by one die) cannot produce more than one kill.
+        // Therefore kill-roll earns at most +1 banked extra die per move.
 
         const banked1 = banked0 + bankedEarned + killRollEarned;
 
@@ -447,12 +451,10 @@ export function handleClientMessage(
             turn: nextTurn,
             pendingDice: remainingDice,
             actingActorId: undefined, // next resolution may be delegated again
-            bankedExtraDice: banked1,
-            bankedExtraDice: banked1,
             bankedExtraRolls: banked1,
           };
 
-          (response as any).turn = { ...nextTurn, pendingDice: remainingDice, ...(banked1 > 0 ? { bankedExtraDice: banked1 } : {}) } as any;
+          (response as any).turn = { ...nextTurn, pendingDice: remainingDice } as any;
           (response.result as any).turn = (response as any).turn;
 
 
@@ -504,7 +506,7 @@ export function handleClientMessage(
           bankedExtraRolls: banked1,
         };
 
-        (response as any).turn = { ...nextTurn, pendingDice: undefined, ...(banked1 > 0 ? { bankedExtraDice: banked1 } : {}) } as any;
+        (response as any).turn = { ...nextTurn, pendingDice: undefined } as any;
           (response.result as any).turn = (response as any).turn;
 
 
