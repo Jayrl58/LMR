@@ -1,73 +1,41 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import { handleClientMessage, type SessionState } from "../src/server/handleMessage";
 import { makeState, P } from "./helpers";
 
 describe("bankedExtraDice rolling semantics", () => {
-  it("when bankedExtraDice > 0, next roll must be a single die and consumes exactly one banked die", () => {
+  it("when bankedExtraRolls > 0, the next roll must roll exactly that many dice (all at once)", () => {
     const pid = P("p0");
+
     const game = makeState({
       playerCount: 2,
       options: { doubleDice: true, killRoll: false, teamPlay: false },
     });
 
     const session: SessionState = {
+      roomCode: "R",
       game: game as any,
       turn: { nextActorId: pid, dicePolicy: "external", awaitingDice: true } as any,
+      actingActorId: pid,
       pendingDice: undefined,
-      actingActorId: undefined,
-      bankedExtraDice: 2,
+      bankedExtraRolls: 2,
     };
 
-    // Reject attempting to roll multiple dice while banked dice exist (even if doubleDice is on).
-    const bad = handleClientMessage(session, { type: "roll", actorId: pid, dice: [3, 4] } as any);
+    // Reject attempting to roll the wrong number of dice while banked dice exist.
+    const bad = handleClientMessage(session, { type: "roll", actorId: pid, dice: [6] } as any);
     expect(bad.serverMessage.type).toBe("error");
 
-    // Accept a single-die roll, consuming exactly one banked die.
-    // Use a value that typically has NO legal moves from the initial state (e.g., 4),
-    // so this path exercises the auto-pass behavior while still consuming the banked die.
-    const ok = handleClientMessage(session, { type: "roll", actorId: pid, dice: [4] } as any);
+    // Accept rolling exactly the bank size. (Use a 6 first so legal moves exist.)
+    const ok = handleClientMessage(session, { type: "roll", actorId: pid, dice: [6, 4] } as any);
+    expect(ok.serverMessage.type).not.toBe("error");
 
-    // In the no-legal-moves case, the server will stateSync (auto-pass).
-    expect(ok.serverMessage.type).toBe("stateSync");
+    // Rolling consumes the entire bank (2 -> 0), then re-banks any newly earned extras from the rolled dice.
+    // Here we rolled a 6 (earns +1) and a 4 (earns +0) => bank becomes 1.
+    expect(ok.nextState.bankedExtraRolls).toBe(1);
 
-    // Session state should have advanced the turn and be awaiting dice again.
-    expect(ok.nextState.turn.awaitingDice).toBe(true);
-    expect(ok.nextState.pendingDice).toBeUndefined();
-
-    // Bank should decrement by 1 (2 -> 1); 4 earns none.
-    expect(ok.nextState.bankedExtraDice).toBe(1);
-  });
-
-  it("a banked extra die roll of 1 or 6 earns an additional banked die (net 0 after consume)", () => {
-    const pid = P("p0");
-    const game = makeState({
-      playerCount: 2,
-      options: { doubleDice: true, killRoll: false, teamPlay: false },
-    });
-
-    const session: SessionState = {
-      game: game as any,
-      turn: { nextActorId: pid, dicePolicy: "external", awaitingDice: true } as any,
-      pendingDice: undefined,
-      actingActorId: undefined,
-      bankedExtraDice: 1,
-    };
-
-    // Roll a 1 from the bank: consume 1 (1 -> 0) then earn 1 (0 -> 1).
-    const ok = handleClientMessage(session, { type: "roll", actorId: pid, dice: [1] } as any);
-
-    // 1 should produce legal moves from the initial state.
-    expect(ok.serverMessage.type).toBe("legalMoves");
-
-    // Now resolving dice.
+    // After a successful roll, we should be in the "resolve" phase (awaitingDice=false) with pendingDice present.
     expect(ok.nextState.turn.awaitingDice).toBe(false);
-    expect(ok.nextState.pendingDice).toEqual([1]);
-
-    // Net bank remains 1.
-    expect(ok.nextState.bankedExtraDice).toBe(1);
-
-    // Turn payload should include banked extra dice count when present.
-    const msg: any = ok.serverMessage as any;
-    expect(msg.turn?.bankedExtraDice).toBe(1);
+    expect(Array.isArray(ok.nextState.pendingDice)).toBe(true);
+    expect((ok.nextState.pendingDice ?? []).length).toBe(2);
   });
 });
