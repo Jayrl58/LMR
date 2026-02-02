@@ -25,13 +25,15 @@ export type SessionState = {
   actingActorId?: string;
 
   /**
-   * Banked extra rolls earned from earlier dice (1 or 6),
-   * to be used AFTER all pendingDice are resolved.
-   *
-   * Rule intent: if you resolve a 6 first while another die remains, you don't
-   * get to roll immediately; the extra roll is banked until the pending dice are done.
+   * Banked extra dice earned earlier in the Turn (e.g. from rolling 1/6, or optional kill-roll).
+   * These dice are owed to the roller and must be rolled only after all pendingDice are resolved.
    */
-  bankedExtraRolls?: number;
+  bankedExtraDice?: number;
+
+  /**
+   * Legacy inbound-only alias for older tests/clients.
+   * Transitional rule: accept on input if bankedExtraDice is absent, but never emit.
+   */
 };
 
 export type HandleResult = {
@@ -177,24 +179,6 @@ export function handleClientMessage(
       }
 
 
-      // Invariant A: when banked extra dice exist, only a single die may be rolled (even if doubleDice is on).
-      // Tests may populate either `bankedExtraDice` (preferred) or legacy `bankedExtraRolls`.
-      const _bankedExtraDice =
-        Number.isInteger((state as any).bankedExtraDice) ? ((state as any).bankedExtraDice as number) :
-        Number.isInteger((state as any).bankedExtraRolls) ? ((state as any).bankedExtraRolls as number) :
-        0;
-
-      if (_bankedExtraDice > 0 && Array.isArray((msg as any).dice) && (msg as any).dice.length !== 1) {
-        return {
-          nextState: state,
-          serverMessage: mkError(
-            "BAD_ROLL",
-            "When banked extra dice exist, you must roll exactly one die.",
-            reqId
-          ),
-        };
-      }
-
       // If there are still pending dice to resolve, a new roll is not allowed.
       if (Array.isArray(state.pendingDice) && state.pendingDice.length > 0) {
         return {
@@ -215,18 +199,33 @@ export function handleClientMessage(
         };
       }
 
-      const rollerId = String(state.turn.nextActorId);
-
-      // Invariant B: banked extra dice are consumed on roll (not on move).
-      // Prefer `bankedExtraDice` (tests) but accept legacy `bankedExtraRolls`.
+      
+      // Transitional normalization: canonical bankedExtraDice; accept legacy bankedExtraDice inbound-only.
       const banked0 =
-        Number.isInteger((state as any).bankedExtraDice) ? ((state as any).bankedExtraDice as number) :
-        Number.isInteger((state as any).bankedExtraRolls) ? ((state as any).bankedExtraRolls as number) :
+        Number.isInteger(state.bankedExtraDice) ? (state.bankedExtraDice as number) :
         0;
 
-      const bankedAfterConsume = banked0 > 0 ? banked0 - 1 : 0;
-      const earnedFromRoll = dice.length === 1 && (dice[0] === 1 || dice[0] === 6) ? 1 : 0;
-      const bankedAfter = bankedAfterConsume + earnedFromRoll;
+      // v1.7.4 banked cashout: if N banked extra dice exist, the next roll must consist of exactly N dice.
+      if (banked0 > 0 && dice.length !== banked0) {
+        return {
+          nextState: state,
+          serverMessage: mkError(
+            "BAD_ROLL",
+            `When ${banked0} banked extra dice exist, you must roll exactly ${banked0} dice.`,
+            reqId
+          ),
+        };
+      }
+
+const rollerId = String(state.turn.nextActorId);
+
+      // Banked extra dice are consumed on roll (not on move).
+      // v1.7.4: a bank cashout roll consumes the entire existing bank, then adds any newly earned extra dice.
+      const earnedFromRoll = dice.reduce(
+        (acc, v) => acc + (v === 1 || v === 6 ? 1 : 0),
+        0
+      );
+      const bankedAfter = earnedFromRoll;
 
       // Choose who ACTS for this roll (may be teammate).
       const recipientId = String(
@@ -253,7 +252,6 @@ export function handleClientMessage(
           pendingDice: undefined,
           actingActorId: undefined,
           bankedExtraDice: bankedAfter,
-          bankedExtraRolls: bankedAfter, // consumed one banked die; may also have earned from rolling 1/6
         };
 
         return {
@@ -270,7 +268,6 @@ export function handleClientMessage(
         pendingDice: dice,
         actingActorId: recipientId,
         bankedExtraDice: bankedAfter,
-        bankedExtraRolls: bankedAfter,
       };
 
             const turnForMsg: any = { ...nextTurn };
@@ -410,9 +407,9 @@ export function handleClientMessage(
         const killRollOn = nextGame?.config?.options?.killRoll === true;
 
         // bank extra rolls earned by THIS die spend
-        const banked0 = Number.isInteger(state.bankedExtraRolls)
-          ? (state.bankedExtraRolls as number)
-          : 0;
+        const banked0 =
+          Number.isInteger(state.bankedExtraDice) ? (state.bankedExtraDice as number) :
+          0;
         const bankedEarned = isExtraRollFromDice(diceUsed) ? 1 : 0;
 
         // Kill-roll (glossary-aligned): any successful kill/capture (sending an opponent peg to base) banks +1 extra die.
@@ -451,7 +448,7 @@ export function handleClientMessage(
             turn: nextTurn,
             pendingDice: remainingDice,
             actingActorId: undefined, // next resolution may be delegated again
-            bankedExtraRolls: banked1,
+            bankedExtraDice: banked1,
           };
 
           (response as any).turn = { ...nextTurn, pendingDice: remainingDice } as any;
@@ -503,7 +500,7 @@ export function handleClientMessage(
           turn: nextTurn,
           pendingDice: undefined,
           actingActorId: undefined,
-          bankedExtraRolls: banked1,
+          bankedExtraDice: banked1,
         };
 
         (response as any).turn = { ...nextTurn, pendingDice: undefined } as any;

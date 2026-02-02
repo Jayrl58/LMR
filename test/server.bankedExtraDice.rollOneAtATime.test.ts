@@ -4,7 +4,7 @@ import { handleClientMessage, type SessionState } from "../src/server/handleMess
 import { makeState, P } from "./helpers";
 
 describe("bankedExtraDice rolling semantics", () => {
-  it("when bankedExtraRolls > 0, the next roll must roll exactly that many dice (all at once)", () => {
+  it("when bankedExtraDice > 0, the next roll must roll exactly that many dice (all at once)", () => {
     const pid = P("p0");
 
     const game = makeState({
@@ -18,7 +18,7 @@ describe("bankedExtraDice rolling semantics", () => {
       turn: { nextActorId: pid, dicePolicy: "external", awaitingDice: true } as any,
       actingActorId: pid,
       pendingDice: undefined,
-      bankedExtraRolls: 2,
+      bankedExtraDice: 2,
     };
 
     // Reject attempting to roll the wrong number of dice while banked dice exist.
@@ -31,7 +31,7 @@ describe("bankedExtraDice rolling semantics", () => {
 
     // Rolling consumes the entire bank (2 -> 0), then re-banks any newly earned extras from the rolled dice.
     // Here we rolled a 6 (earns +1) and a 4 (earns +0) => bank becomes 1.
-    expect(ok.nextState.bankedExtraRolls).toBe(1);
+    expect(ok.nextState.bankedExtraDice).toBe(1);
 
     // After a successful roll, we should be in the "resolve" phase (awaitingDice=false) with pendingDice present.
     expect(ok.nextState.turn.awaitingDice).toBe(false);
