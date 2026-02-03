@@ -119,9 +119,6 @@ function normalizeDice(msg: any): number[] | null {
   return null;
 }
 
-function isExtraRollFromDice(dice: number[]): boolean {
-  return dice.some((d) => d === 1 || d === 6);
-}
 
 /**
  * Multiset subtraction: remove each value in `used` from `pool` (once per occurrence).
@@ -404,16 +401,14 @@ const rollerId = String(state.turn.nextActorId);
         const engineTurn = (response.result as any).turn ?? state.turn;
 
         const teamPlayOn = nextGame?.config?.options?.teamPlay === true;
-        const killRollOn = nextGame?.config?.options?.killRoll === true;
-
-        // bank extra rolls earned by THIS die spend
+        const killRollOn = nextGame?.config?.options?.killRoll === true;        // Banked extra dice are earned on ROLL (when dice show 1 or 6), not on MOVE spend.
+        // Therefore, the move step must not add to bank based on diceUsed.
         const banked0 =
           Number.isInteger(state.bankedExtraDice) ? (state.bankedExtraDice as number) :
           0;
-        const bankedEarned = isExtraRollFromDice(diceUsed) ? 1 : 0;
 
         // Kill-roll (glossary-aligned): any successful kill/capture (sending an opponent peg to base) banks +1 extra die.
-        // (Not +1 per capture; the tests currently assert +1 total per capturing move.)
+        // (Not +1 per capture; tests assert +1 total per capturing move.)
         const captureCount =
           (((response.result as any)?.move?.captures?.length as number | undefined) ??
             ((response.result as any)?.result?.move?.captures?.length as number | undefined) ??
@@ -421,45 +416,50 @@ const rollerId = String(state.turn.nextActorId);
             0) ||
           0;
         const killRollEarned = killRollOn && captureCount > 0 ? 1 : 0;
-        // Invariant: one move (one peg advanced by one die) cannot produce more than one kill.
-        // Therefore kill-roll earns at most +1 banked extra die per move.
 
-        const banked1 = banked0 + bankedEarned + killRollEarned;
+        const banked1 = banked0 + killRollEarned;
 
         const delegated = state.actingActorId && state.actingActorId !== rollerId;
 
-        // If there are still pending dice remaining, we must remain in resolve mode:
-        // - same roller keeps control
-        // - awaitingDice stays false
-        // - pendingDice keeps the remainder
+        // If there are still pending dice remaining, check whether any are resolvable.
         if (
           Array.isArray(state.pendingDice) &&
           state.pendingDice.length > 0 &&
           remainingDice.length > 0
         ) {
-          const nextTurn: TurnInfo = {
-            ...engineTurn,
-            nextActorId: rollerId, // keep control with the roller while resolving dice
-            awaitingDice: false,
-          };
+          const hasAnyLegalMove = remainingDice.some((d) => {
+            const lm = legalMoves(nextGame as any, rollerId as any, [d] as any) as any[];
+            return Array.isArray(lm) && lm.length > 0;
+          });
 
-          const nextState: SessionState = {
-            game: nextGame,
-            turn: nextTurn,
-            pendingDice: remainingDice,
-            actingActorId: undefined, // next resolution may be delegated again
-            bankedExtraDice: banked1,
-          };
+          if (hasAnyLegalMove) {
+            const nextTurn: TurnInfo = {
+              ...engineTurn,
+              nextActorId: rollerId, // keep control with the roller while resolving dice
+              awaitingDice: false,
+            };
 
-          (response as any).turn = { ...nextTurn, pendingDice: remainingDice } as any;
-          (response.result as any).turn = (response as any).turn;
+            const nextState: SessionState = {
+              game: nextGame,
+              turn: nextTurn,
+              pendingDice: remainingDice,
+              actingActorId: undefined, // next resolution may be delegated again
+              bankedExtraDice: banked1,
+            };
 
+            (response as any).turn = { ...nextTurn, pendingDice: remainingDice } as any;
+            (response.result as any).turn = (response as any).turn;
 
-          return {
-            nextState,
-            serverMessage: mkMoveResult(roomCode, response, reqId),
-          };
+            return {
+              nextState,
+              serverMessage: mkMoveResult(roomCode, response, reqId),
+            };
+          }
+
+          // Otherwise, remaining dice exist but have no legal moves; exhaust them.
+          remainingDice = [];
         }
+
 
         // Otherwise, dice resolution is complete (either no pendingDice existed, or it is now empty).
         // Decide who rolls next:
@@ -477,8 +477,8 @@ const rollerId = String(state.turn.nextActorId);
           nextActorId = (msg as any).actorId;
         }
 
-        // Apply banked extra-roll rule:
-        // If any extra rolls are banked, the roller keeps the turn to roll again.
+        // Apply banked extra-dice rule:
+        // If any extra dice are banked, the roller keeps the turn to roll again.
         // (The bank is consumed when the roll is taken.)
         if (banked1 > 0) {
           nextActorId = rollerId;
