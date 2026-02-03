@@ -11,6 +11,24 @@
 
 ## What Was Completed in This Session
 
+### Double‑Dice Dead Pending Die Fix (2026‑02‑03)
+- Fixed **dead pending die exhaustion**:
+  - If remaining pending dice have zero legal moves after a move, they are auto‑exhausted.
+  - Turn advances immediately; no lock or forced restart.
+- Fixed **extra‑die accounting regression**:
+  - Extra dice are awarded **only** for:
+    - rolling a **1**
+    - rolling a **6**
+    - a **kill** (when kill‑roll is enabled)
+  - No extra dice are granted on die spend.
+  - Prevents erroneous “roll exactly 4 dice” BAD_ROLL states.
+- Added regression test:
+  - `test/server.doubleDice.deadDieExhaustion.test.ts`
+- Manual gameplay verified:
+  - Spending smaller die first correctly forfeits larger die when no legal moves remain.
+  - Re‑rolling after 1/6 resolution behaves correctly.
+
+
 ### Dice Lifecycle & Banking (v1.7.4)
 - Canonicalized **bankedExtraDice** (legacy bankedExtraRolls fully removed).
 - Locked **N-dice cashout** semantics:

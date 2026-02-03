@@ -1,18 +1,21 @@
 # LMR Snapshot Manifest
 
 **Project:** Last Man Running (LMR) / Roll & Run  
-**Snapshot Type:** Engine Messaging & Dice Lifecycle Milestone  
+**Snapshot Type:** Engine Dice Lifecycle – Dead Pending Die Resolution  
 **Status:** GREEN (Engine + Tests)  
-**Date:** 2026-01-27
+**Date:** 2026-02-03
 
 ---
 
 ## Purpose
 
-This manifest records a **logic and server-messaging milestone** in the LMR project.  
+This manifest records an **engine-level dice lifecycle milestone** in the LMR project.  
 It exists to support safe resumption, verification, and regression prevention.
 
-This snapshot captures **engine-facing server behavior**, not UI polish.
+This snapshot captures **authoritative server behavior** around:
+- double-dice resolution
+- extra-die banking
+- turn advancement when dice become unusable
 
 ---
 
@@ -20,8 +23,8 @@ This snapshot captures **engine-facing server behavior**, not UI polish.
 
 The following documents remain **canonical and locked**:
 
-- **Rules Authority:** `LMR_Rules_Authority_v1.7.3.md`
-- **Rules Anchor:** `Rules_Anchor_v1.7.3.md`
+- **Rules Authority:** `LMR_Rules_Authority_v1.7.4.md`
+- **Rules Anchor:** `LMR_RULES_ANCHOR_v1.7.4.md`
 
 No gameplay rule changes are introduced by this snapshot.
 
@@ -31,20 +34,26 @@ No gameplay rule changes are introduced by this snapshot.
 
 ### Engine / Server Fixes
 
-- **Fixed `moveResult` turn inconsistency**:
-  - `pendingDice` is now preserved correctly after spending a single die from a multi-die roll
-  - `awaitingDice` now reflects true resolution state (only `true` when no pending dice remain)
-- Removed divergence between:
-  - `moveResult.response.turn`
-  - engine-derived `result.turn`
-  - subsequent `stateSync.turn`
+- **Fixed dead pending die exhaustion**
+  - If remaining pending dice have **zero legal moves** after a move, they are auto-exhausted.
+  - The turn advances immediately.
+  - Prevents soft-locks requiring game restarts.
+
+- **Fixed extra-die accounting regression**
+  - Extra dice are awarded **only** for:
+    - rolling a **1**
+    - rolling a **6**
+    - a **kill** (when kill-roll is enabled)
+  - Extra dice are **not** granted on die spend.
+  - Prevents erroneous `BAD_ROLL` states (e.g., “must roll exactly 4 dice”).
 
 ### Contract Locking
 
-- Added a **server-level test** asserting:
-  - `moveResult.response.turn` mirrors engine/session turn state
-  - Pending dice and awaiting state cannot silently regress
-- This test will fail CI if the dice lifecycle messaging contract is violated.
+- Added a **server-level regression test**:
+  - `test/server.doubleDice.deadDieExhaustion.test.ts`
+- Test asserts:
+  - Remaining pending dice with no legal moves are exhausted automatically
+  - Turn advances cleanly with no pending dice remaining
 
 ---
 
@@ -63,17 +72,18 @@ No gameplay rule changes are introduced by this snapshot.
 - Engine logic for:
   - double-dice
   - pending dice resolution
-  - extra dice lifecycle
+  - dead die exhaustion
+  - extra-die lifecycle
   is **GREEN and verified**
-- Full test suite passes, including the new contract test
+- Full test suite passes (`npm test`)
 
 ---
 
 ## UI / Debug Status
 
 - HTTP console may lag or diverge from authoritative server messaging
-- WS-level inspection (`wsClient.ts`) is the preferred diagnostic tool
-- UI cleanup may occur in a future snapshot
+- WS-level inspection remains the authoritative diagnostic surface
+- UI reconciliation may occur in a future snapshot
 
 ---
 
@@ -82,8 +92,9 @@ No gameplay rule changes are introduced by this snapshot.
 This snapshot is considered valid if and only if:
 
 - Commits include:
-  - `Fix moveResult turn consistency: preserve pendingDice and awaitingDice after moves`
-  - `Add test enforcing moveResult turn consistency with pending dice`
+  - Fix for dead pending die exhaustion
+  - Fix for extra-die double counting
+  - Addition of `server.doubleDice.deadDieExhaustion.test.ts`
 - All tests pass (`npm test`)
 - No uncommitted engine files are present in the snapshot ZIP
 
@@ -94,10 +105,10 @@ This snapshot is considered valid if and only if:
 To resume work from this snapshot:
 
 1. Pull snapshot ZIP at this commit boundary
-2. Trust engine dice lifecycle and server turn messaging as canonical
+2. Trust engine dice lifecycle behavior as canonical
 3. Continue with:
    - UI reconciliation **or**
-   - further engine features (kill-roll, banking UX, etc.)
+   - additional engine features (kill-roll UX, banking display, etc.)
 
 ---
 
