@@ -51,6 +51,35 @@
 
 ---
 
+## What Was Completed in This Session (2026‑02‑04)
+
+### Kill‑Roll Banking — Server & Contract
+- Fixed **kill‑roll banking detection**:
+  - Server now detects captures via `replayEntry.move.captures`.
+  - Resolves mismatch between engine replay data and banking logic.
+- Enforced **kill‑roll cash‑out gating**:
+  - Turn does not advance until banked extra die is cashed out.
+  - Invalid cash‑out rolls are rejected with **BAD_ROLL**.
+- Added **wsServer lifecycle integration test**:
+  - `test/wsServer.killRoll.lifecycle.integration.test.ts`
+  - Verifies capture → bank → enforced single‑die cash‑out.
+- Full suite verified **GREEN** after fix.
+
+### Team Play — Lobby Contract Locked
+- Defined and committed **Team Play lobby contract**:
+  - Team Play remains an option in `LobbyGameConfig`.
+  - Team membership tracked in lobby state (not game config).
+- Locked **team assignment policy**:
+  - One‑time random split when Team Play enabled.
+  - **Lock on first ready** (no automatic reassignment afterward).
+  - Explicit **swap‑only** adjustments allowed after lock.
+- Extended protocol:
+  - Added `LobbyTeams` structure with `isLocked` semantics.
+- No gameplay logic implemented yet; this is a **contract‑first milestone**.
+
+
+---
+
 ## Current Authoritative Rules
 - **Rules Authority:** `LMR_Rules_Authority_v1.7.4.md`
 - **Rules Anchor:** `LMR_Rules_Anchor_v1.7.4.md`

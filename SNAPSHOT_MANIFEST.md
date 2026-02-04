@@ -1,115 +1,58 @@
-# LMR Snapshot Manifest
 
-**Project:** Last Man Running (LMR) / Roll & Run  
-**Snapshot Type:** Engine Dice Lifecycle – Dead Pending Die Resolution  
-**Status:** GREEN (Engine + Tests)  
-**Date:** 2026-02-03
+# SNAPSHOT MANIFEST
+LMR Project — Restart-Complete Snapshot
 
----
-
-## Purpose
-
-This manifest records an **engine-level dice lifecycle milestone** in the LMR project.  
-It exists to support safe resumption, verification, and regression prevention.
-
-This snapshot captures **authoritative server behavior** around:
-- double-dice resolution
-- extra-die banking
-- turn advancement when dice become unusable
-
----
-
-## Canonical Rule Documents (Unchanged)
-
-The following documents remain **canonical and locked**:
-
-- **Rules Authority:** `LMR_Rules_Authority_v1.7.4.md`
-- **Rules Anchor:** `LMR_RULES_ANCHOR_v1.7.4.md`
-
-No gameplay rule changes are introduced by this snapshot.
+Snapshot Version: v2.7  
+Snapshot Date: 2026-02-04  
+Snapshot Type: Engine Dice Lifecycle + Kill-Roll Banking + Team Play Lobby Contract
 
 ---
 
 ## Summary of Changes Since Prior Snapshot
 
-### Engine / Server Fixes
+### Kill-Roll Banking (Server)
+- Fixed kill-roll banking detection to use `replayEntry.move.captures`.
+- Server now correctly detects captures for kill-roll scenarios.
+- Turn does **not** advance until the banked extra die is cashed out.
+- Invalid cash-out rolls are rejected with `BAD_ROLL`.
+- Behavior enforced server-side; UI is not responsible for banking logic.
 
-- **Fixed dead pending die exhaustion**
-  - If remaining pending dice have **zero legal moves** after a move, they are auto-exhausted.
-  - The turn advances immediately.
-  - Prevents soft-locks requiring game restarts.
+### Kill-Roll Lifecycle Verification
+- Added wsServer lifecycle integration test:
+  - `test/wsServer.killRoll.lifecycle.integration.test.ts`
+- Test verifies end-to-end behavior:
+  - capture → bank → enforced single-die cash-out
+- Full test suite verified **GREEN** after changes.
 
-- **Fixed extra-die accounting regression**
-  - Extra dice are awarded **only** for:
-    - rolling a **1**
-    - rolling a **6**
-    - a **kill** (when kill-roll is enabled)
-  - Extra dice are **not** granted on die spend.
-  - Prevents erroneous `BAD_ROLL` states (e.g., “must roll exactly 4 dice”).
+### Team Play — Lobby Contract Lock
+- Team Play remains an option in `LobbyGameConfig`.
+- Team membership is tracked in lobby state, not game config.
+- One-time random team split when Team Play is enabled.
+- **Lock on first ready** prevents automatic reassignment.
+- Explicit **swap-only** adjustments allowed after lock.
+- Contract defined in `protocol.ts`; no gameplay logic implemented yet.
 
-### Contract Locking
+---
 
-- Added a **server-level regression test**:
-  - `test/server.doubleDice.deadDieExhaustion.test.ts`
-- Test asserts:
-  - Remaining pending dice with no legal moves are exhausted automatically
-  - Turn advances cleanly with no pending dice remaining
+## Files of Note
+- `src/server/handleMessage.ts` — kill-roll banking detection fix
+- `src/server/protocol.ts` — Team Play lobby contract additions
+- `test/wsServer.killRoll.lifecycle.integration.test.ts` — kill-roll lifecycle coverage
+
+---
+
+## Snapshot Integrity Notes
+- Rules Authority remains unchanged and authoritative.
+- No UI behavior changes included.
+- Snapshot is restart-complete and engine-safe.
+- All tests passing at time of snapshot.
 
 ---
 
 ## Explicit Non-Changes
-
-- No rules authority changes
-- No board geometry changes
-- No movement or capture rule changes
-- No UI behavior is locked by this snapshot
-- HTTP debug console is explicitly **non-authoritative**
+- No changes to Rules Authority text.
+- No changes to board geometry.
+- No new gameplay variants introduced.
+- No lobby UI implemented yet for Team Play.
 
 ---
-
-## Engine Status
-
-- Engine logic for:
-  - double-dice
-  - pending dice resolution
-  - dead die exhaustion
-  - extra-die lifecycle
-  is **GREEN and verified**
-- Full test suite passes (`npm test`)
-
----
-
-## UI / Debug Status
-
-- HTTP console may lag or diverge from authoritative server messaging
-- WS-level inspection remains the authoritative diagnostic surface
-- UI reconciliation may occur in a future snapshot
-
----
-
-## Snapshot Integrity
-
-This snapshot is considered valid if and only if:
-
-- Commits include:
-  - Fix for dead pending die exhaustion
-  - Fix for extra-die double counting
-  - Addition of `server.doubleDice.deadDieExhaustion.test.ts`
-- All tests pass (`npm test`)
-- No uncommitted engine files are present in the snapshot ZIP
-
----
-
-## Resume Pointer
-
-To resume work from this snapshot:
-
-1. Pull snapshot ZIP at this commit boundary
-2. Trust engine dice lifecycle behavior as canonical
-3. Continue with:
-   - UI reconciliation **or**
-   - additional engine features (kill-roll UX, banking display, etc.)
-
----
-
-**End of SNAPSHOT_MANIFEST**
