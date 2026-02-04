@@ -34,6 +34,12 @@ export interface SetReadyMessage {
   ready: boolean;
   reqId?: string;
 }
+  /**
+   * Team membership (only used when teamPlay is enabled in lobby gameConfig).
+   * Optional and server-authored.
+   */
+  teams?: LobbyTeams;
+
 
 /**
  * startGame now locks all game-creation options.
@@ -152,6 +158,23 @@ export interface LobbyGameConfig {
   doubleDice?: boolean;
   killRoll?: boolean;
 }
+
+export interface LobbyTeams {
+  /**
+   * Team membership is tracked in lobby state (not gameConfig) so it can be
+   * adjusted (swap) prior to startGame and then locked into game state at start.
+   */
+  teamA: PlayerId[];
+  teamB: PlayerId[];
+
+  /**
+   * "Lock on first ready" contract:
+   * once any player sets ready=true in team play, the server sets isLocked=true,
+   * preventing any automatic reassignment. Explicit swaps may still be allowed.
+   */
+  isLocked: boolean;
+}
+
 
 export interface LobbyState {
   roomCode: RoomCode;
