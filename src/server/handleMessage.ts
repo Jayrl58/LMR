@@ -410,7 +410,8 @@ const rollerId = String(state.turn.nextActorId);
         // Kill-roll (glossary-aligned): any successful kill/capture (sending an opponent peg to base) banks +1 extra die.
         // (Not +1 per capture; tests assert +1 total per capturing move.)
         const captureCount =
-          (((response.result as any)?.move?.captures?.length as number | undefined) ??
+          (((response.result as any)?.replayEntry?.move?.captures?.length as number | undefined) ??
+            ((response.result as any)?.move?.captures?.length as number | undefined) ??
             ((response.result as any)?.result?.move?.captures?.length as number | undefined) ??
             ((response as any)?.result?.move?.captures?.length as number | undefined) ??
             0) ||
