@@ -83,6 +83,9 @@ function isClientMessage(x: any): x is ClientMessage {
     case "setReady":
       return typeof x.ready === "boolean";
 
+    case "setLobbyGameConfig":
+      return isPlainObject(x.gameConfig) && typeof (x.gameConfig as any).playerCount === "number";
+
     case "startGame":
       return typeof x.playerCount === "number" && (!("options" in x) || isPlainObject(x.options));
 
@@ -122,6 +125,83 @@ function makeRoomCode(): string {
   for (let i = 0; i < 6; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
   return out;
 }
+function hashStringToUint32(s: string): number {
+  // Simple FNV-1a 32-bit hash (deterministic)
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+function makeXorShift32(seed: number) {
+  let x = seed >>> 0;
+  if (x === 0) x = 0x6d2b79f5; // non-zero default seed
+  return function nextFloat(): number {
+    // xorshift32
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    // Convert to [0,1)
+    return ((x >>> 0) / 0x100000000);
+  };
+}
+
+function shuffleDeterministic<T>(arr: T[], seedStr: string): T[] {
+  const out = arr.slice();
+  const rand = makeXorShift32(hashStringToUint32(seedStr));
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    const tmp = out[i];
+    out[i] = out[j];
+    out[j] = tmp;
+  }
+  return out;
+}
+
+function ensureTeamLockIfEligible(room: Room) {
+  if (room.phase !== "lobby") return;
+
+  const gc = room.gameConfig;
+  if (!gc?.teamPlay) return;
+
+  const pc = gc.playerCount;
+  if (!Number.isFinite(pc) || !pc) return;
+
+  // Only lock once the roster is complete (playerCount gate).
+  if (room.clientToPlayer.size !== pc) return;
+
+  if (pc % 2 !== 0) return; // two teams require even playerCount
+
+  const existing = gc.teams;
+  if (existing?.isLocked) return;
+
+  if (existing && !existing.isLocked) {
+    room.gameConfig = { ...gc, teams: { ...existing, isLocked: true } };
+    return;
+  }
+
+  // One-time "random" team split (deterministic for a given room + roster).
+  const playerIds = Array.from(room.clientToPlayer.values()).sort((a, b) => {
+    const ai = Number(a.replace(/^p/, ""));
+    const bi = Number(b.replace(/^p/, ""));
+    return (Number.isFinite(ai) ? ai : 9999) - (Number.isFinite(bi) ? bi : 9999);
+  });
+
+  const shuffled = shuffleDeterministic(playerIds, `${room.code}|${playerIds.join(",")}`);
+  const half = pc / 2;
+
+  room.gameConfig = {
+    ...gc,
+    teams: {
+      teamA: shuffled.slice(0, half),
+      teamB: shuffled.slice(half),
+      isLocked: true,
+    },
+  };
+}
+
 
 function roomFilePath(persistenceDir: string, roomCode: string) {
   return path.join(persistenceDir, `${roomCode}.json`);
@@ -391,8 +471,34 @@ export function startWsServer(opts: WsServerOptions) {
 
       const playerId = room.clientToPlayer.get(cid) ?? pickNextAvailablePlayerId(room);
 
-      if (msg.type === "setReady") {
-        room.readyByPlayer.set(playerId, !!(msg as any).ready);
+      
+      if (msg.type === "setLobbyGameConfig") {
+        if (room.phase !== "lobby") {
+          send(ws, makeError("BAD_MESSAGE", "Cannot set lobby gameConfig after game start.", reqId));
+          return;
+        }
+
+        const gc = (msg as any).gameConfig as LobbyGameConfig;
+        room.gameConfig = { ...(room.gameConfig ?? {}), ...(gc ?? {}) };
+
+        // Keep expectedPlayerCount aligned when configured in-lobby.
+        room.expectedPlayerCount = room.gameConfig.playerCount;
+
+        persist(room);
+        emitLobbySync(room, reqId);
+        return;
+      }
+
+if (msg.type === "setReady") {
+        const ready = !!(msg as any).ready;
+
+        // Team Play: lock teams on the first ready=true, but only once the lobby roster is complete
+        // (playerCount gate) so we can scale cleanly to 4/6/8 player team sizes.
+        if (ready) {
+          ensureTeamLockIfEligible(room);
+        }
+
+        room.readyByPlayer.set(playerId, ready);
         persist(room);
         emitLobbySync(room, reqId);
         return;
@@ -403,7 +509,17 @@ export function startWsServer(opts: WsServerOptions) {
         const options = (msg as any).options as GameStartOptions | undefined;
 
         room.expectedPlayerCount = pc;
-        room.gameConfig = { playerCount: pc, options: options ?? {} };
+        const prevGc = room.gameConfig ?? {};
+        room.gameConfig = {
+          ...prevGc,
+          playerCount: pc,
+          teamPlay: options?.teamPlay ?? prevGc.teamPlay,
+          teamCount: options?.teamCount ?? prevGc.teamCount,
+          boardArmCount: (options as any)?.boardOverride ?? prevGc.boardArmCount,
+          doubleDice: options?.doubleDice ?? prevGc.doubleDice,
+          killRoll: options?.killRoll ?? prevGc.killRoll,
+          teams: prevGc.teams,
+        };
         room.phase = "active";
 
         (room.session.game as any).config = {

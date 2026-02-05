@@ -11,6 +11,7 @@ export type ClientMessage =
   | HelloMessage
   | JoinRoomMessage
   | SetReadyMessage
+  | SetLobbyGameConfigMessage
   | StartGameMessage
   | RollMessage
   | GetLegalMovesMessage
@@ -34,12 +35,16 @@ export interface SetReadyMessage {
   ready: boolean;
   reqId?: string;
 }
-  /**
-   * Team membership (only used when teamPlay is enabled in lobby gameConfig).
-   * Optional and server-authored.
-   */
-  teams?: LobbyTeams;
 
+/**
+ * Set lobby game configuration before startGame.
+ * Server records this while phase==="lobby" and echoes it via lobbySync.
+ */
+export interface SetLobbyGameConfigMessage {
+  type: "setLobbyGameConfig";
+  gameConfig: LobbyGameConfig;
+  reqId?: string;
+}
 
 /**
  * startGame now locks all game-creation options.
@@ -157,12 +162,13 @@ export interface LobbyGameConfig {
   boardArmCount?: number;
   doubleDice?: boolean;
   killRoll?: boolean;
+  teams?: LobbyTeams;
 }
 
 export interface LobbyTeams {
   /**
-   * Team membership is tracked in lobby state (not gameConfig) so it can be
-   * adjusted (swap) prior to startGame and then locked into game state at start.
+   * Team membership is tracked in the lobby gameConfig so it can be adjusted (swap)
+   * prior to startGame, then copied into the started game config at start.
    */
   teamA: PlayerId[];
   teamB: PlayerId[];
@@ -183,8 +189,8 @@ export interface LobbyState {
   expectedPlayerCount?: number;
 
   /**
-   * Locked game-creation config.
-   * Present once startGame has been issued.
+   * Lobby game-creation config.
+   * May be set before startGame via setLobbyGameConfig; becomes locked at startGame.
    */
   gameConfig?: LobbyGameConfig;
 }
