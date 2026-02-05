@@ -375,7 +375,7 @@ function html(): string {
 
       <div class="checkRow">
         <label title="When ON, the console automatically calls setReady(true) after joining a room.">
-          <input id="optAutoReady" type="checkbox" checked /> auto-ready (debug)
+          <input id="optAutoReady" type="checkbox" /> auto-ready (debug)
         </label>
       </div>
 
