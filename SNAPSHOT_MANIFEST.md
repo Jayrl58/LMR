@@ -1,49 +1,64 @@
-
 # SNAPSHOT MANIFEST
 LMR Project — Restart-Complete Snapshot
 
-Snapshot Version: v2.7  
-Snapshot Date: 2026-02-04  
-Snapshot Type: Engine Dice Lifecycle + Kill-Roll Banking + Team Play Lobby Contract
+Snapshot Version: v2.8  
+Snapshot Date: 2026-02-05  
+Snapshot Type: Team Play Lobby Implementation + PlayerCount-Gated Lock + Debug Console Auto-Ready Default OFF
 
 ---
 
-## Summary of Changes Since Prior Snapshot
+## Summary of Changes Since Prior Snapshot (v2.7)
 
-### Kill-Roll Banking (Server)
-- Fixed kill-roll banking detection to use `replayEntry.move.captures`.
-- Server now correctly detects captures for kill-roll scenarios.
-- Turn does **not** advance until the banked extra die is cashed out.
-- Invalid cash-out rolls are rejected with `BAD_ROLL`.
-- Behavior enforced server-side; UI is not responsible for banking logic.
+### Team Play — Lobby Configuration (Server)
+- Implemented **pre-start lobby configuration** via new client → server message: `setLobbyGameConfig`.
+- Lobby can now store the intended `playerCount` and `teamPlay` flag **before** `startGame`.
 
-### Kill-Roll Lifecycle Verification
-- Added wsServer lifecycle integration test:
-  - `test/wsServer.killRoll.lifecycle.integration.test.ts`
-- Test verifies end-to-end behavior:
-  - capture → bank → enforced single-die cash-out
-- Full test suite verified **GREEN** after changes.
+### Team Play — Lock on First Ready (PlayerCount-Gated)
+- Implemented **lock-on-first-ready** for Team Play, gated by roster completion:
+  - Teams lock only when:
+    - `teamPlay === true`
+    - `gameConfig.playerCount` is set
+    - connected players == `playerCount`
+    - first `ready=true` occurs
+  - No automatic reassignment after lock.
+  - Subsequent `ready=true` events do not reshuffle teams.
+- Enforced **even `playerCount` requirement** for two-team splits (balanced teams).
 
-### Team Play — Lobby Contract Lock
-- Team Play remains an option in `LobbyGameConfig`.
-- Team membership is tracked in lobby state, not game config.
-- One-time random team split when Team Play is enabled.
-- **Lock on first ready** prevents automatic reassignment.
-- Explicit **swap-only** adjustments allowed after lock.
-- Contract defined in `protocol.ts`; no gameplay logic implemented yet.
+### Team Play — Verification
+- Added integration tests covering:
+  - no lock before roster completion
+  - lock on first `ready=true` once roster is complete
+  - no reshuffle after lock
+  - no lock for odd `playerCount`
+- New test file:
+  - `test/lobby.teamPlay.lock.playerCount.integration.test.ts`
+- Full test suite verified **GREEN** after implementation.
+
+### Debug Console — Auto-Ready Default OFF
+- Kept the debug **auto-ready** toggle, but changed default to **OFF** to prevent accidental team locks on room join.
+- File:
+  - `src/server/httpConsole.ts`
+
+---
+
+## Carried Forward From v2.7 (No Changes in v2.8)
+- Kill-roll banking detection uses `replayEntry.move.captures`.
+- Turn is held for kill-roll cash-out; invalid cash-out rolls rejected with `BAD_ROLL`.
+- Team Play lobby contract remains as defined; v2.8 implements the server behavior (no lobby UI yet).
 
 ---
 
 ## Files of Note
-- `src/server/handleMessage.ts` — kill-roll banking detection fix
-- `src/server/protocol.ts` — Team Play lobby contract additions
-- `test/wsServer.killRoll.lifecycle.integration.test.ts` — kill-roll lifecycle coverage
+- `src/server/protocol.ts` — adds `setLobbyGameConfig` message; protocol-aligned lobby game config fields
+- `src/server/wsServer.ts` — implements lobby config handling + Team Play lock gating
+- `src/server/httpConsole.ts` — auto-ready default OFF (debug console safety)
+- `test/lobby.teamPlay.lock.playerCount.integration.test.ts` — Team Play lock integration coverage
 
 ---
 
 ## Snapshot Integrity Notes
 - Rules Authority remains unchanged and authoritative.
-- No UI behavior changes included.
+- Server remains authoritative; UI does not invent rules.
 - Snapshot is restart-complete and engine-safe.
 - All tests passing at time of snapshot.
 
@@ -53,6 +68,6 @@ Snapshot Type: Engine Dice Lifecycle + Kill-Roll Banking + Team Play Lobby Contr
 - No changes to Rules Authority text.
 - No changes to board geometry.
 - No new gameplay variants introduced.
-- No lobby UI implemented yet for Team Play.
+- No lobby UI implemented yet for Team Play (server-only behavior + tests).
 
 ---
