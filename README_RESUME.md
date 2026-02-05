@@ -80,6 +80,30 @@
 
 ---
 
+
+---
+
+## What Was Completed in This Session (2026‑02‑05)
+
+### Team Play — Lobby Implementation (Server)
+- Implemented **pre‑start lobby configuration** via `setLobbyGameConfig` (client → server).
+- Lobby now accepts and stores:
+  - `playerCount`
+  - `teamPlay` flag
+- Implemented **Team Play lock-on-first-ready**, gated by roster completion:
+  - Teams lock only when:
+    - Team Play is enabled
+    - `playerCount` is set
+    - Connected players === `playerCount`
+    - First `ready=true` occurs
+  - No automatic reassignment after lock.
+  - Subsequent ready events do not reshuffle teams.
+- Enforced **even playerCount requirement** for two-team splits.
+- Behavior verified with new server integration tests:
+  - `test/lobby.teamPlay.lock.playerCount.integration.test.ts`
+- Full test suite verified **GREEN** after implementation.
+
+
 ## Current Authoritative Rules
 - **Rules Authority:** `LMR_Rules_Authority_v1.7.4.md`
 - **Rules Anchor:** `LMR_Rules_Anchor_v1.7.4.md`
