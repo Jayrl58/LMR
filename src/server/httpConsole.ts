@@ -386,6 +386,30 @@ function html(): string {
       </div>
 
       <!-- Start is always visible -->
+      <div class="divider"></div>
+
+      <h3 style="margin:0 0 10px 0;">Lobby Config (pre-start)</h3>
+
+      <div class="row">
+        <button id="btnApplyLobbyConfig" disabled class="primary">Apply Lobby Config</button>
+        <span class="pill" id="lobbyPhasePill">phase</span>
+        <span class="small mono" id="lobbySummary">(not joined)</span>
+      </div>
+
+      <div class="row">
+        <div style="flex:1;">
+          <label>lobby.gameConfig (server)</label><br/>
+          <textarea id="lobbyGameConfig" spellcheck="false" readonly style="min-height:110px;"></textarea>
+        </div>
+      </div>
+
+      <div class="row">
+        <div style="flex:1;">
+          <label>Last lobby error (if any)</label><br/>
+          <div id="lobbyError" class="small mono" style="white-space:pre-wrap; color:var(--err);">(none)</div>
+        </div>
+      </div>
+
       <div class="row" style="margin-top:6px;">
         <button id="btnStart" disabled class="primary">Start</button>
       </div>
@@ -468,6 +492,7 @@ function html(): string {
   const btnReadyTrueEl = document.getElementById("btnReadyTrue");
   const btnReadyFalseEl = document.getElementById("btnReadyFalse");
   const btnStartEl = document.getElementById("btnStart");
+const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
 
   const btnSubmitRollEl = document.getElementById("btnSubmitRoll");
   const btnClearRollEl = document.getElementById("btnClearRoll");
@@ -480,6 +505,10 @@ function html(): string {
 
   const lastActionTextEl = document.getElementById("lastActionText");
   const lastActionPillEl = document.getElementById("lastActionPill");
+  const lobbyPhasePillEl = document.getElementById("lobbyPhasePill");
+  const lobbySummaryEl = document.getElementById("lobbySummary");
+  const lobbyGameConfigEl = document.getElementById("lobbyGameConfig");
+  const lobbyErrorEl = document.getElementById("lobbyError");
   const movesBodyEl = document.getElementById("movesBody");
 
   const nextActorIdEl = document.getElementById("nextActorId");
@@ -507,6 +536,10 @@ function html(): string {
   let ws = null;
   let connected = false;
   let joined = false;
+
+  // Latest lobby snapshot from server (lobbySync)
+  let lastLobby = null;
+  let lastLobbyError = "";
 
   // Moves shown in the right column (for last requested die)
   let lastMoves = [];
@@ -811,6 +844,43 @@ function html(): string {
     eligibleToResolveEl.textContent = eligibleToResolve ? "YES" : "NO";
   }
 
+
+  function renderLobbyPanel(){
+    const lobby = lastLobby;
+
+    if (!lobbyPhasePillEl || !lobbySummaryEl || !lobbyGameConfigEl || !lobbyErrorEl) return;
+
+    if (!lobby){
+      lobbyPhasePillEl.textContent = "phase";
+      pill(lobbyPhasePillEl, null);
+      lobbySummaryEl.textContent = "(not joined)";
+      lobbyGameConfigEl.value = "";
+      lobbyErrorEl.textContent = lastLobbyError ? lastLobbyError : "(none)";
+      return;
+    }
+
+    lobbyPhasePillEl.textContent = lobby.phase || "lobby";
+    pill(lobbyPhasePillEl, (lobby.phase === "active") ? "err" : "ok");
+
+    const players = Array.isArray(lobby.players) ? lobby.players : [];
+    const pc = (lobby.gameConfig && typeof lobby.gameConfig.playerCount === "number") ? lobby.gameConfig.playerCount : lobby.expectedPlayerCount;
+
+    const teamsLocked = !!(lobby.gameConfig && lobby.gameConfig.teams && lobby.gameConfig.teams.isLocked);
+    const teamPlayOn = !!(lobby.gameConfig && lobby.gameConfig.teamPlay);
+
+    const readyCount = players.filter(p => !!p.ready).length;
+
+    lobbySummaryEl.textContent =
+      "players=" + players.length +
+      (Number.isFinite(pc) ? ("/" + pc) : "") +
+      " ready=" + readyCount + "/" + players.length +
+      " teamPlay=" + (teamPlayOn ? "on" : "off") +
+      (teamPlayOn ? (" teamsLocked=" + (teamsLocked ? "yes" : "no")) : "");
+
+    lobbyGameConfigEl.value = JSON.stringify(lobby.gameConfig ?? null, null, 2);
+    lobbyErrorEl.textContent = lastLobbyError ? lastLobbyError : "(none)";
+  }
+
   function syncUI(){
     btnDisconnectEl.disabled = !connected;
     btnConnectEl.disabled = connected;
@@ -824,6 +894,10 @@ function html(): string {
     btnReadyFalseEl.disabled = !joined || autoReadyOn;
 
     btnStartEl.disabled = !joined;
+
+    const inLobby = joined && lastLobby && lastLobby.phase === "lobby";
+    btnApplyLobbyConfigEl.disabled = !inLobby;
+
 
     const canRollNow = joined && (turnAwaitingDice === true) && (!pendingDiceUI || pendingDiceUI.length === 0);
     btnSubmitRollEl.disabled = !canRollNow || !rollSlots.every(v => Number.isFinite(v) && v>=1 && v<=6);
@@ -849,6 +923,7 @@ function html(): string {
     lastActionTextEl.textContent = lastAction || "(none)";
     setAutoFetchUi();
     syncTurnPanel();
+    renderLobbyPanel();
   }
 
   function sendRaw(obj){
@@ -894,6 +969,19 @@ function html(): string {
       const code = msg.code || "error";
       lastAction = "ERR " + code + " " + (msg.message || "");
       addErr("server error: " + JSON.stringify(msg));
+
+      // If this error is plausibly related to lobby config actions, surface it in the lobby panel.
+      try{
+        const codeStr = String(code || "error");
+        const msgStr = typeof msg.message === "string" ? msg.message : "";
+        const looksLobby = (lastAction && lastAction.startsWith("setLobbyGameConfig"))
+          || /lobby\s+gameConfig/i.test(msgStr)
+          || /set\s+lobby\s+gameConfig/i.test(msgStr);
+        if (looksLobby){
+          lastLobbyError = codeStr + (msgStr ? (": " + msgStr) : "");
+        }
+      }catch(_){ }
+
 
       // Unwind local state on roll/turn-state errors to avoid UI desync loops.
       if (code === "BAD_ROLL" || code === "BAD_TURN_STATE" || code === "TURN_STATE" || code === "NOT_YOUR_TURN"){
@@ -959,6 +1047,21 @@ function html(): string {
 
     if (msg.type === "lobbySync"){
       lastAction = "lobbySync";
+      lastLobby = msg.lobby || null;
+
+      // Hydrate Start Options inputs from server lobby.gameConfig when present.
+      try{
+        const gc = lastLobby && lastLobby.gameConfig ? lastLobby.gameConfig : null;
+        if (gc && typeof gc.playerCount === "number") playerCountEl.value = String(gc.playerCount);
+        if (gc && typeof gc.teamPlay === "boolean") optTeamPlayEl.checked = !!gc.teamPlay;
+        if (gc && typeof gc.teamCount === "number") teamCountEl.value = String(gc.teamCount);
+        if (gc && typeof gc.doubleDice === "boolean") optDoubleDiceEl.checked = !!gc.doubleDice;
+        if (gc && typeof gc.killRoll === "boolean") optKillRollEl.checked = !!gc.killRoll;
+        if (gc && (gc.boardArmCount === 4 || gc.boardArmCount === 6 || gc.boardArmCount === 8)){
+          boardOverrideEl.value = String(gc.boardArmCount);
+        }
+      }catch(_){}
+
       extractTurnFields(msg);
       renderRollDiceList();
       maybeSendAutoReady(msg);
@@ -1193,6 +1296,50 @@ function html(): string {
   btnReadyFalseEl.onclick = () => {
     sendRaw({ type: "setReady", ready: false });
     lastAction = "setReady false";
+    syncUI();
+  };
+
+  btnApplyLobbyConfigEl.onclick = () => {
+    const playerCount = Number((playerCountEl.value || "").trim());
+    if (!Number.isFinite(playerCount) || playerCount <= 0){
+      lastLobbyError = "CLIENT: Invalid playerCount. Must be a positive number.";
+      lastAction = "ERR invalid lobby playerCount";
+      syncUI();
+      return;
+    }
+
+    const gameConfig = { playerCount: playerCount };
+
+    gameConfig.doubleDice = !!optDoubleDiceEl.checked;
+    gameConfig.killRoll = !!optKillRollEl.checked;
+
+    if (optTeamPlayEl.checked){
+      gameConfig.teamPlay = true;
+      const tc = Number((teamCountEl.value || "").trim());
+      if (Number.isFinite(tc) && tc > 0){
+        gameConfig.teamCount = tc;
+      } else {
+        // default for team play
+        gameConfig.teamCount = 2;
+      }
+
+      if (playerCount % 2 !== 0){
+        // This is a client-side warning; server will simply never lock teams for odd counts.
+        lastLobbyError = "CLIENT: teamPlay requires even playerCount for a 2-team split (lock gate).";
+      } else {
+        lastLobbyError = "";
+      }
+    } else {
+      lastLobbyError = "";
+    }
+
+    const bo = (boardOverrideEl.value || "").trim();
+    if (bo === "4" || bo === "6" || bo === "8"){
+      gameConfig.boardArmCount = Number(bo);
+    }
+
+    sendRaw({ type: "setLobbyGameConfig", gameConfig });
+    lastAction = "setLobbyGameConfig " + JSON.stringify(gameConfig);
     syncUI();
   };
 

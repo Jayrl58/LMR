@@ -160,6 +160,14 @@ function shuffleDeterministic<T>(arr: T[], seedStr: string): T[] {
   return out;
 }
 
+
+function anyPlayerReady(room: Room): boolean {
+  for (const v of room.readyByPlayer.values()) {
+    if (v) return true;
+  }
+  return false;
+}
+
 function ensureTeamLockIfEligible(room: Room) {
   if (room.phase !== "lobby") return;
 
@@ -483,6 +491,12 @@ export function startWsServer(opts: WsServerOptions) {
 
         // Keep expectedPlayerCount aligned when configured in-lobby.
         room.expectedPlayerCount = room.gameConfig.playerCount;
+
+        // Behavior fix: if config is applied after players have already readied,
+        // and the roster is complete, immediately lock teams (Team Play).
+        if (anyPlayerReady(room)) {
+          ensureTeamLockIfEligible(room);
+        }
 
         persist(room);
         emitLobbySync(room, reqId);
