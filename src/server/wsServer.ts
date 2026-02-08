@@ -14,6 +14,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 
+
+
+// NOTE: Some environments enable room persistence to disk. The core server should not crash
+// if persistence is disabled or the helper is omitted. This is a no-op unless a persistence
+// dir is provided and a concrete implementation is added later.
+function persistRoomIfEnabled(_room: any, _roomPersistenceDir?: string) {
+  // Intentionally a no-op for now.
+  void _room;
+  void _roomPersistenceDir;
+}
+
 export type WsServerOptions = {
   port: number;
   initialState: GameState;
@@ -79,6 +90,10 @@ function isClientMessage(x: any): x is ClientMessage {
         (!("roomCode" in x) || typeof x.roomCode === "string") &&
         (!("claimPlayerId" in x) || typeof x.claimPlayerId === "string")
       );
+
+
+    case "leaveRoom":
+      return !("reqId" in x) || typeof x.reqId === "string";
 
     case "setReady":
       return typeof x.ready === "boolean";
@@ -532,6 +547,52 @@ export function startWsServer(opts: WsServerOptions) {
       room.sockets.add(ws);
 
       const playerId = room.clientToPlayer.get(cid) ?? pickNextAvailablePlayerId(room);
+
+      if (msg.type === "leaveRoom") {
+        if (room.phase !== "lobby") {
+          send(ws, makeError("BAD_MESSAGE", "Cannot leave after game start.", reqId));
+          return;
+        }
+
+        const leavingPlayerId = room.clientToPlayer.get(cid);
+        if (leavingPlayerId) {
+          // Remove from roster mapping for this clientId
+          room.clientToPlayer.delete(cid);
+
+          // Remove ready flag
+          room.readyByPlayer.delete(leavingPlayerId);
+
+          // Remove from teams (if enabled)
+          const gc0 = room.gameConfig;
+          if (gc0?.teamPlay) {
+            const teams = ensureTeamsObject(room);
+            teams.teamA = teams.teamA.filter((p) => p !== leavingPlayerId);
+            teams.teamB = teams.teamB.filter((p) => p !== leavingPlayerId);
+
+            // If roster is no longer eligible for lock, unlock.
+            const pc = gc0.playerCount;
+            const eligible =
+              Number.isFinite(pc) &&
+              !!pc &&
+              room.clientToPlayer.size === pc &&
+              pc % 2 === 0;
+
+            if (!eligible) teams.isLocked = false;
+
+            room.gameConfig = { ...gc0, teams };
+          }
+        }
+
+        // Detach this socket from the room; client may join another room later.
+        room.sockets.delete(ws);
+        wsRoom.delete(ws);
+
+        persistRoomIfEnabled(room, opts.roomPersistenceDir);
+
+        emitLobbySync(room, reqId);
+        return;
+      }
+
 
       
       if (msg.type === "setLobbyGameConfig") {

@@ -10,6 +10,7 @@ export type RoomCode = string;
 export type ClientMessage =
   | HelloMessage
   | JoinRoomMessage
+  | LeaveRoomMessage
   | SetReadyMessage
   | SetLobbyGameConfigMessage
   | SetTeamMessage
@@ -28,6 +29,11 @@ export interface JoinRoomMessage {
   type: "joinRoom";
   roomCode?: RoomCode;
   claimPlayerId?: PlayerId;
+  reqId?: string;
+}
+
+export interface LeaveRoomMessage {
+  type: "leaveRoom";
   reqId?: string;
 }
 
