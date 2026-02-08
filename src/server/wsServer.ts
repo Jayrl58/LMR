@@ -14,6 +14,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 
+
+
+// NOTE: Some environments enable room persistence to disk. The core server should not crash
+// if persistence is disabled or the helper is omitted. This is a no-op unless a persistence
+// dir is provided and a concrete implementation is added later.
+function persistRoomIfEnabled(_room: any, _roomPersistenceDir?: string) {
+  // Intentionally a no-op for now.
+  void _room;
+  void _roomPersistenceDir;
+}
+
 export type WsServerOptions = {
   port: number;
   initialState: GameState;
@@ -80,12 +91,22 @@ function isClientMessage(x: any): x is ClientMessage {
         (!("claimPlayerId" in x) || typeof x.claimPlayerId === "string")
       );
 
+
+    case "leaveRoom":
+      return !("reqId" in x) || typeof x.reqId === "string";
+
     case "setReady":
       return typeof x.ready === "boolean";
 
     case "setLobbyGameConfig":
       return isPlainObject(x.gameConfig) && typeof (x.gameConfig as any).playerCount === "number";
 
+
+    case "setTeam":
+      return (
+        (x.team === "A" || x.team === "B") &&
+        (!("reqId" in x) || typeof x.reqId === "string")
+      );
     case "startGame":
       return typeof x.playerCount === "number" && (!("options" in x) || isPlainObject(x.options));
 
@@ -168,6 +189,70 @@ function anyPlayerReady(room: Room): boolean {
   return false;
 }
 
+function computeExpectedTeamsByPlayerId(playerIds: string[]) {
+  // Hybrid Option 4 deterministic algorithm locked by contract tests:
+  // - order by playerId ascending
+  // - assign to smaller-count team, tie -> A
+  const ordered = [...playerIds].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const teamA: string[] = [];
+  const teamB: string[] = [];
+  for (const id of ordered) {
+    if (teamA.length < teamB.length) teamA.push(id);
+    else if (teamB.length < teamA.length) teamB.push(id);
+    else teamA.push(id);
+  }
+  return { teamA, teamB };
+}
+
+function ensureTeamsObject(room: Room) {
+  const gc = room.gameConfig ?? ({} as any);
+  const existing = (gc as any).teams;
+  if (existing && Array.isArray(existing.teamA) && Array.isArray(existing.teamB)) return existing;
+  const created = { teamA: [] as string[], teamB: [] as string[], isLocked: false };
+  room.gameConfig = { ...gc, teams: created } as any;
+  return created;
+}
+
+function backfillTeamsDeterministically(room: Room) {
+  if (room.phase !== "lobby") return;
+  const gc = room.gameConfig;
+  if (!gc?.teamPlay) return;
+  // Only 2-team scope for now
+  const teams = ensureTeamsObject(room);
+  if (teams.isLocked) return;
+  const playerIds = Array.from(new Set(Array.from(room.clientToPlayer.values())));
+  const expected = computeExpectedTeamsByPlayerId(playerIds);
+  teams.teamA = expected.teamA;
+  teams.teamB = expected.teamB;
+  teams.isLocked = false;
+  room.gameConfig = { ...gc, teams };
+}
+
+function assignPlayerOnJoin(room: Room, playerId: string) {
+  if (room.phase !== "lobby") return;
+  const gc = room.gameConfig;
+  if (!gc?.teamPlay) return;
+  const teams = ensureTeamsObject(room);
+  if (teams.isLocked) return;
+  if (teams.teamA.includes(playerId) || teams.teamB.includes(playerId)) return;
+  // smaller team; tie -> A
+  if (teams.teamA.length <= teams.teamB.length) teams.teamA.push(playerId);
+  else teams.teamB.push(playerId);
+  room.gameConfig = { ...gc, teams };
+}
+
+function moveSelfToTeam(room: Room, playerId: string, team: "A" | "B") {
+  const gc = room.gameConfig;
+  if (!gc?.teamPlay) return;
+  const teams = ensureTeamsObject(room);
+  if (teams.isLocked) return;
+  teams.teamA = teams.teamA.filter((id) => id !== playerId);
+  teams.teamB = teams.teamB.filter((id) => id !== playerId);
+  if (team === "A") teams.teamA.push(playerId);
+  else teams.teamB.push(playerId);
+  room.gameConfig = { ...gc, teams };
+}
+
 function ensureTeamLockIfEligible(room: Room) {
   if (room.phase !== "lobby") return;
 
@@ -182,32 +267,74 @@ function ensureTeamLockIfEligible(room: Room) {
 
   if (pc % 2 !== 0) return; // two teams require even playerCount
 
-  const existing = gc.teams;
-  if (existing?.isLocked) return;
+  // Ensure teams exist + partition before locking (contract requires no unassigned).
+  backfillTeamsDeterministically(room);
 
-  if (existing && !existing.isLocked) {
-    room.gameConfig = { ...gc, teams: { ...existing, isLocked: true } };
+  const teams = ensureTeamsObject(room);
+  if (teams.isLocked) return;
+
+  room.gameConfig = { ...gc, teams: { ...teams, isLocked: true } } as any;
+}
+
+function ensureTeamsExist(room: Room) {
+  const gc = room.gameConfig ?? {};
+  if (!gc.teamPlay || gc.teamCount !== 2) return;
+
+  const existing = gc.teams as any | undefined;
+  if (existing && Array.isArray(existing.teamA) && Array.isArray(existing.teamB)) {
+    // keep existing arrays; ensure all current players are represented (unless locked)
+    if (existing.isLocked) return;
+    const present = new Set<string>([...existing.teamA, ...existing.teamB]);
+    const players = (room.players ?? []).map((p: any) => p.playerId).filter(Boolean) as string[];
+    for (const pid of players) {
+      if (!present.has(pid)) {
+        // assign missing players by smaller-team rule
+        if ((existing.teamA?.length ?? 0) <= (existing.teamB?.length ?? 0)) existing.teamA.push(pid);
+        else existing.teamB.push(pid);
+      }
+    }
     return;
   }
 
-  // One-time "random" team split (deterministic for a given room + roster).
-  const playerIds = Array.from(room.clientToPlayer.values()).sort((a, b) => {
-    const ai = Number(a.replace(/^p/, ""));
-    const bi = Number(b.replace(/^p/, ""));
-    return (Number.isFinite(ai) ? ai : 9999) - (Number.isFinite(bi) ? bi : 9999);
-  });
+  const teams = { isLocked: false, teamA: [] as string[], teamB: [] as string[] };
+  const players = (room.players ?? []).map((p: any) => p.playerId).filter(Boolean) as string[];
+  players.sort();
+  for (const pid of players) {
+    if (teams.teamA.length <= teams.teamB.length) teams.teamA.push(pid);
+    else teams.teamB.push(pid);
+  }
 
-  const shuffled = shuffleDeterministic(playerIds, `${room.code}|${playerIds.join(",")}`);
-  const half = pc / 2;
+  room.gameConfig = { ...gc, teams };
+}
 
-  room.gameConfig = {
-    ...gc,
-    teams: {
-      teamA: shuffled.slice(0, half),
-      teamB: shuffled.slice(half),
-      isLocked: true,
-    },
-  };
+function removeFromTeams(room: Room, playerId: string) {
+  const gc: any = room.gameConfig ?? {};
+  const t: any = gc.teams;
+  if (!t || (!Array.isArray(t.teamA) && !Array.isArray(t.teamB))) return;
+  if (Array.isArray(t.teamA)) t.teamA = t.teamA.filter((x: string) => x !== playerId);
+  if (Array.isArray(t.teamB)) t.teamB = t.teamB.filter((x: string) => x !== playerId);
+  room.gameConfig = { ...gc, teams: t };
+}
+
+function assignToSmallerTeam(room: Room, playerId: string) {
+  ensureTeamsExist(room);
+  const gc: any = room.gameConfig ?? {};
+  const t: any = gc.teams;
+  if (!t || t.isLocked) return;
+  const inA = Array.isArray(t.teamA) && t.teamA.includes(playerId);
+  const inB = Array.isArray(t.teamB) && t.teamB.includes(playerId);
+  if (inA || inB) return;
+
+  const aLen = Array.isArray(t.teamA) ? t.teamA.length : 0;
+  const bLen = Array.isArray(t.teamB) ? t.teamB.length : 0;
+  if (aLen <= bLen) (t.teamA ??= []).push(playerId);
+  else (t.teamB ??= []).push(playerId);
+
+  room.gameConfig = { ...gc, teams: t };
+}
+
+function isLobbyPhase(room: Room) {
+  return room.phase === "lobby";
 }
 
 
@@ -453,6 +580,9 @@ export function startWsServer(opts: WsServerOptions) {
         room.clientToPlayer.set(cid, playerId);
         if (!room.readyByPlayer.has(playerId)) room.readyByPlayer.set(playerId, false);
 
+        // Team Play: assign on join when enabled (Hybrid Option 4, tie -> A)
+        assignPlayerOnJoin(room, playerId);
+
         persist(room);
 
         send(ws, withReqId({ type: "roomJoined", roomCode: roomCode, actorId: playerId } as any, reqId));
@@ -479,6 +609,52 @@ export function startWsServer(opts: WsServerOptions) {
 
       const playerId = room.clientToPlayer.get(cid) ?? pickNextAvailablePlayerId(room);
 
+      if (msg.type === "leaveRoom") {
+        if (room.phase !== "lobby") {
+          send(ws, makeError("BAD_MESSAGE", "Cannot leave after game start.", reqId));
+          return;
+        }
+
+        const leavingPlayerId = room.clientToPlayer.get(cid);
+        if (leavingPlayerId) {
+          // Remove from roster mapping for this clientId
+          room.clientToPlayer.delete(cid);
+
+          // Remove ready flag
+          room.readyByPlayer.delete(leavingPlayerId);
+
+          // Remove from teams (if enabled)
+          const gc0 = room.gameConfig;
+          if (gc0?.teamPlay) {
+            const teams = ensureTeamsObject(room);
+            teams.teamA = teams.teamA.filter((p) => p !== leavingPlayerId);
+            teams.teamB = teams.teamB.filter((p) => p !== leavingPlayerId);
+
+            // If roster is no longer eligible for lock, unlock.
+            const pc = gc0.playerCount;
+            const eligible =
+              Number.isFinite(pc) &&
+              !!pc &&
+              room.clientToPlayer.size === pc &&
+              pc % 2 === 0;
+
+            if (!eligible) teams.isLocked = false;
+
+            room.gameConfig = { ...gc0, teams };
+          }
+        }
+
+        // Detach this socket from the room; client may join another room later.
+        room.sockets.delete(ws);
+        wsRoom.delete(ws);
+
+        persistRoomIfEnabled(room, opts.roomPersistenceDir);
+
+        emitLobbySync(room, reqId);
+        return;
+      }
+
+
       
       if (msg.type === "setLobbyGameConfig") {
         if (room.phase !== "lobby") {
@@ -487,8 +663,16 @@ export function startWsServer(opts: WsServerOptions) {
         }
 
         const gc = (msg as any).gameConfig as LobbyGameConfig;
+        const prevTeamPlay = !!room.gameConfig?.teamPlay;
         room.gameConfig = { ...(room.gameConfig ?? {}), ...(gc ?? {}) };
+        const nowTeamPlay = !!room.gameConfig?.teamPlay;
 
+        // Team Play contract: enabling Team Play must immediately backfill teams for current players.
+        if (nowTeamPlay && !prevTeamPlay) {
+          backfillTeamsDeterministically(room);
+        } else if (nowTeamPlay && !room.gameConfig?.teams) {
+          backfillTeamsDeterministically(room);
+        }
         // Keep expectedPlayerCount aligned when configured in-lobby.
         room.expectedPlayerCount = room.gameConfig.playerCount;
 
@@ -503,6 +687,36 @@ export function startWsServer(opts: WsServerOptions) {
         return;
       }
 
+
+      if (msg.type === "setTeam") {
+        if (room.phase !== "lobby") {
+          send(ws, makeError("BAD_MESSAGE", "Cannot change teams after game start.", reqId));
+          return;
+        }
+
+        const gc = room.gameConfig;
+        if (!gc?.teamPlay) {
+          send(ws, makeError("BAD_MESSAGE", "Team Play is not enabled.", reqId));
+          return;
+        }
+
+        const teams = ensureTeamsObject(room);
+        if (teams.isLocked) {
+          send(ws, makeError("LOBBY_LOCKED", "Teams are locked.", reqId));
+          return;
+        }
+
+        const team = (msg as any).team as "A" | "B";
+        if (team !== "A" && team !== "B") {
+          send(ws, makeError("BAD_MESSAGE", "Invalid team.", reqId));
+          return;
+        }
+
+        moveSelfToTeam(room, playerId, team);
+        persist(room);
+        emitLobbySync(room, reqId);
+        return;
+      }
 if (msg.type === "setReady") {
         const ready = !!(msg as any).ready;
 
@@ -519,13 +733,11 @@ if (msg.type === "setReady") {
       }
 
       if (msg.type === "startGame") {
-        // startGame is only valid while the room is still in lobby phase.
-        // After the first successful startGame, further startGame messages must be rejected.
-        if (room.phase !== "lobby") {
-          send(ws, makeError("BAD_MESSAGE", "Game already started.", reqId));
+        if (room.phase === "active") {
+          // Already started: reject (idempotent clients should treat this as a no-op).
+          send(ws, makeError("BAD_MESSAGE", "startGame is not allowed once game has started.", reqId));
           return;
         }
-
         const pc = Number((msg as any).playerCount);
         const options = (msg as any).options as GameStartOptions | undefined;
 
@@ -541,6 +753,10 @@ if (msg.type === "setReady") {
           killRoll: options?.killRoll ?? prevGc.killRoll,
           teams: prevGc.teams,
         };
+
+        // If teamPlay is enabled, ensure teams structure exists even before lock.
+        ensureTeamsExist(room);
+
         room.phase = "active";
 
         (room.session.game as any).config = {
