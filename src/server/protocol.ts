@@ -12,6 +12,7 @@ export type ClientMessage =
   | JoinRoomMessage
   | SetReadyMessage
   | SetLobbyGameConfigMessage
+  | SetTeamMessage
   | StartGameMessage
   | RollMessage
   | GetLegalMovesMessage
@@ -50,6 +51,12 @@ export interface SetLobbyGameConfigMessage {
  * startGame now locks all game-creation options.
  * playerCount is still required for backward compatibility.
  */
+
+export interface SetTeamMessage {
+  type: "setTeam";
+  team: "A" | "B";
+  reqId?: string;
+}
 export interface StartGameMessage {
   type: "startGame";
   playerCount: number;

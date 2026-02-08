@@ -74,6 +74,10 @@ function extractTeams(m: any) {
   return m?.lobby?.gameConfig?.teams;
 }
 
+function asSetKey(ids: string[]) {
+  return [...new Set(ids)].sort().join("|");
+}
+
 describe("lobby team play lock (playerCount-gated)", () => {
   it("does not lock teams before roster is complete; locks once complete on first ready=true", async () => {
     const initialState = makeState({ playerCount: 4 }) as any;
@@ -125,10 +129,24 @@ describe("lobby team play lock (playerCount-gated)", () => {
       (m) => m.lobby?.players?.length === 3 && m.lobby?.gameConfig?.teamPlay === true && m.lobby?.gameConfig?.playerCount === 4
     );
 
-    // Ready before roster complete => should NOT lock teams
+    // Ready before roster complete => should NOT lock teams (but teams may exist/assign)
     setReady(ws0, true);
     const lNoLock = await waitForLobby(next0, "0 lobby no-lock", (m) => m.lobby?.players?.length === 3);
-    expect(extractTeams(lNoLock)).toBeUndefined();
+
+    const teamsNoLock = extractTeams(lNoLock);
+    expect(teamsNoLock).toBeTruthy();
+    expect(teamsNoLock?.isLocked).toBe(false);
+    expect(Array.isArray(teamsNoLock?.teamA)).toBe(true);
+    expect(Array.isArray(teamsNoLock?.teamB)).toBe(true);
+
+    // Partition equals players (no unassigned)
+    const playerIds3 = (lNoLock.lobby?.players ?? []).map((p: any) => p.playerId);
+    const allTeamIds3 = [...teamsNoLock.teamA, ...teamsNoLock.teamB];
+    expect(asSetKey(allTeamIds3)).toBe(asSetKey(playerIds3));
+
+    // With 3 players and tie->A assignment, expect A has 2 and B has 1
+    expect(teamsNoLock.teamA.length).toBe(2);
+    expect(teamsNoLock.teamB.length).toBe(1);
 
     // 4th client joins
     const ws3 = new WebSocket(`ws://localhost:${server.port}`);
@@ -157,6 +175,11 @@ describe("lobby team play lock (playerCount-gated)", () => {
     expect(Array.isArray(teams?.teamB)).toBe(true);
     expect(teams.teamA.length).toBe(2);
     expect(teams.teamB.length).toBe(2);
+
+    // Partition equals players
+    const playerIds4 = (lLocked.lobby?.players ?? []).map((p: any) => p.playerId);
+    const allTeamIds4 = [...teams.teamA, ...teams.teamB];
+    expect(asSetKey(allTeamIds4)).toBe(asSetKey(playerIds4));
 
     const firstTeamsJson = JSON.stringify(teams);
 
@@ -209,10 +232,24 @@ describe("lobby team play lock (playerCount-gated)", () => {
         m.lobby?.gameConfig?.playerCount === 5
     );
 
-    // Ready after roster complete but odd => should NOT lock / assign teams
+    // Ready after roster complete but odd => should NOT lock (but teams may exist/assign)
     setReady(wss[0], true);
     const l = await waitForLobby(nexts[0], "0 lobby post-ready", (m) => m.lobby?.players?.length === 5);
-    expect(extractTeams(l)).toBeUndefined();
+
+    const teamsPostReady = extractTeams(l);
+    expect(teamsPostReady).toBeTruthy();
+    expect(teamsPostReady?.isLocked).toBe(false);
+    expect(Array.isArray(teamsPostReady?.teamA)).toBe(true);
+    expect(Array.isArray(teamsPostReady?.teamB)).toBe(true);
+
+    // Partition equals players (no unassigned)
+    const playerIds = (l.lobby?.players ?? []).map((p: any) => p.playerId);
+    const allTeamIds = [...teamsPostReady.teamA, ...teamsPostReady.teamB];
+    expect(asSetKey(allTeamIds)).toBe(asSetKey(playerIds));
+
+    // With 5 players and tie->A assignment, expect A has 3 and B has 2
+    expect(teamsPostReady.teamA.length).toBe(3);
+    expect(teamsPostReady.teamB.length).toBe(2);
 
     wss.forEach((ws) => ws.close());
     await server.close();
