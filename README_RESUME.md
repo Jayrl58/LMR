@@ -2,104 +2,92 @@
 
 ## Snapshot Status
 - **Branch:** master
-- **Last Commit:** ac0a419
 - **State:** GREEN (all tests passing)
-- **Engine:** Server dice lifecycle + banking semantics finalized
-- **Rules:** Authority v1.7.4 locked; Anchor v1.7.4 locked
+- **Tests:** 115/115 passing (54 files)
+- **Scope:** Lobby Team Play (2 teams), startGame handoff invariants, room leave semantics
+
+> Note: Update the **Last Commit** line after you commit any remaining staged/untracked files.
+
+- **Last Commit:** (fill in from `git log -1 --oneline`)
 
 ---
 
-## What Was Completed in This Session
+## What Was Completed (Latest Session)
 
-### Double-Dice Dead Pending Die Fix (2026-02-03)
-- Fixed **dead pending die exhaustion**:
-  - If remaining pending dice have zero legal moves after a move, they are auto-exhausted.
-  - Turn advances immediately; no lock or forced restart.
-- Fixed **extra-die accounting regression**:
-  - Extra dice are awarded **only** for:
-    - rolling a **1**
-    - rolling a **6**
-    - a **kill** (when kill-roll is enabled)
-  - No extra dice are granted on die spend.
-  - Prevents erroneous “roll exactly 4 dice” BAD_ROLL states.
-- Added regression test:
-  - `test/server.doubleDice.deadDieExhaustion.test.ts`
-- Manual gameplay verified.
+### Lobby: leaveRoom + persistence + lobbySync hygiene
+- Added explicit client message: `leaveRoom`
+- Server behavior on leave:
+  - removes the client socket from the room
+  - persists the room (when persistence enabled)
+  - emits `lobbySync` reflecting the updated roster / teams
 
----
+### Lobby: Team Play contract hardening (assignment + self-only swap + reconnect/leave)
+- Team Play stays a **lobby-level contract** (no engine/gameplay coupling).
+- Hardened invariants verified by contract tests:
+  - enabling Team Play backfills teams deterministically
+  - join assigns to smaller team (tie → A)
+  - `setTeam` is **self-only** and rejects when:
+    - not in lobby phase
+    - teams are locked
+    - invalid team id
+    - not joined to a room
 
-### Dice Lifecycle & Banking (v1.7.4)
-- Canonicalized **bankedExtraDice** (legacy terminology fully removed).
-- Locked **N-dice cash-out** semantics:
-  - Banked dice roll together.
-  - Bank is consumed before new extras can be earned.
-- Enforced **turn-advance invariants**:
-  - No advance while Active, Pending, or Banked dice exist.
-- Auto-pass never bypasses Banked Extra Dice.
+### startGame: phase/transition invariants (“handoff”)
+- startGame transitions lobby → active and emits state to clients.
+- startGame is now **phase-guarded**:
+  - once room is `active`, subsequent `startGame` is rejected/ignored (no re-init side effects)
+- Lobby-only messages are rejected after startGame.
 
----
-
-## What Was Completed in This Session (2026-02-04)
-
-### Kill-Roll Banking — Server & Contract
-- Fixed kill-roll capture detection via replay data.
-- Enforced kill-roll cash-out gating.
-- Added lifecycle integration test:
-  - `test/wsServer.killRoll.lifecycle.integration.test.ts`
-- Full suite verified **GREEN**.
+### Team lock gating regression fix (playerCount-gated lock)
+- Restored/confirmed Team Play lock gating expectations:
+  - teams exist while in lobby (even before lock)
+  - teams lock only when roster is complete, rules permit lock (even count), and first `ready=true` occurs
+- Fixed server-side pre-lock teams representation to satisfy integration + contract expectations.
 
 ---
 
-### Team Play — Lobby Contract Locked
-- Defined Team Play as a **lobby-level contract**, not gameplay logic.
-- Locked team assignment rules:
-  - One-time random split.
-  - No reshuffle after lock.
-  - Swap-only changes allowed post-lock.
-- Extended protocol with `LobbyTeams` and `isLocked`.
-- No gameplay engine changes.
-
----
-
-## What Was Completed in This Session (2026-02-05)
-
-### Team Play — Lobby Implementation (Server)
-- Implemented **pre-start lobby configuration** via `setLobbyGameConfig`.
-- Lobby now stores:
-  - `playerCount`
-  - `teamPlay`
-- Enforced **even playerCount** for two-team play.
-- Added integration tests:
-  - `test/lobby.teamPlay.lock.playerCount.integration.test.ts`
-- Full test suite verified **GREEN**.
-
-### Team Play — Auto-Lock Behavior Fix
-- Fixed edge case where:
-  - Players were already **ready**
-  - Lobby was already **full**
-  - Team Play config was applied **afterward**
-- New behavior:
-  - If Team Play is enabled **after** the lobby is full and **any player is ready**, teams **lock immediately**.
-- Preserves all original gating rules.
-- Removes the need for a manual “toggle ready” workaround.
-- **No Rules Authority changes.**
-
----
-
-## Current Authoritative Rules
-- **Rules Authority:** `LMR_Rules_Authority_v1.7.4.md`
-- **Rules Anchor:** `LMR_Rules_Anchor_v1.7.4.md`
-
-All engine, server, UI, and tests must conform to these documents.
+## Files Added / Modified (Latest Session)
+- **Modified**
+  - `src/server/wsServer.ts` — leaveRoom handling; team pre-lock + lock gating; startGame phase guard
+  - `src/server/protocol.ts` — leaveRoom message (plus prior lobby/team message types)
+  - `test/lobby.teams.contract.test.ts` — hardened Team Play contract coverage
+- **Added**
+  - `test/wsServer.startGame.handoff.contract.test.ts` — startGame handoff invariants (contract)
 
 ---
 
 ## How to Resume Work
 
-1. Start on **master** with a clean working tree.
-2. Read:
-   - `LMR_Rules_Authority_v1.7.4.md`
-   - `LMR_Rules_Anchor_v1.7.4.md`
-3. Confirm tests are green:
-   ```powershell
-   npm test
+### 1) Confirm clean + green
+```powershell
+git status
+npm test
+```
+
+### 2) If you need to commit new work
+Run these **one at a time** (separate copy blocks):
+
+```powershell
+git add src/server/protocol.ts
+```
+
+```powershell
+git add src/server/wsServer.ts
+```
+
+```powershell
+git add test/lobby.teams.contract.test.ts
+```
+
+```powershell
+git add test/wsServer.startGame.handoff.contract.test.ts
+```
+
+```powershell
+git commit -m "Lobby leaveRoom + Team Play hardening + startGame phase-guard"
+```
+
+### 3) Next subsystem candidate
+- “StartGame → engine config transfer” (authoritative config source-of-truth):
+  - ensure lobby `gameConfig` → started game config is copied once, immutable after start
+  - ensure options like `teamPlay/teamCount/doubleDice/killRoll` flow through consistently
