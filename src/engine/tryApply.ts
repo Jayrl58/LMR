@@ -40,6 +40,19 @@ export function tryApplyMoveWithResponse(
 
   // Validate move against legalMoves for the selected die only.
   const moves = legalMoves(state, actorId as any, [selectedDie] as const);
+
+  // Phase 5 contract: if the selected die has *no legal moves* in the current state,
+  // the caller must resolve another die first (temporarily-illegal die selection).
+  if (moves.length === 0) {
+    return {
+      ok: false,
+      error: {
+        code: "ILLEGAL_MOVE",
+        message: "No legal moves for selected die yet — resolve another die first.",
+      },
+    };
+  }
+
   const isLegal = moves.some((m: any) => sameMove(m, proposedMove));
 
   if (!isLegal) {
