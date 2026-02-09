@@ -3,56 +3,35 @@
 ## Snapshot Status
 - **Branch:** master
 - **State:** GREEN (all tests passing)
-- **Tests:** 115/115 passing (54 files)
-- **Scope:** Lobby Team Play (2 teams), startGame handoff invariants, room leave semantics
+- **Scope:** Phase 5 — Turn & Dice lifecycle contract hardening (auto-pass timing, FIFO forfeiture, Team Play per-die delegation)
 
-> Note: Update the **Last Commit** line after you commit any remaining staged/untracked files.
+- **Last Commit:** df38f09 Phase 5: lock turn & dice lifecycle contracts (auto-pass, delegation, explicit no-legal-moves)
 
-- **Last Commit:** (fill in from `git log -1 --oneline`)
+> Note: Full-suite test counts can vary as skipped/todo tests change. Treat GREEN status and contract tests as authoritative.
 
 ---
 
 ## What Was Completed (Latest Session)
 
-### Lobby: leaveRoom + persistence + lobbySync hygiene
-- Added explicit client message: `leaveRoom`
-- Server behavior on leave:
-  - removes the client socket from the room
-  - persists the room (when persistence enabled)
-  - emits `lobbySync` reflecting the updated roster / teams
+### Phase 5: Turn & Dice lifecycle contracts
+- Locked and enforced the “temporarily-illegal die” rule (double-dice opening 1+5 scenario).
+- Locked and enforced auto-pass timing: auto-pass triggers only when **all** unresolved dice are illegal in the current state.
+- Locked and enforced FIFO ordering for forced forfeiture.
+- Locked and enforced explicit per-die forfeiture notifications suitable for UI display.
 
-### Lobby: Team Play contract hardening (assignment + self-only swap + reconnect/leave)
-- Team Play stays a **lobby-level contract** (no engine/gameplay coupling).
-- Hardened invariants verified by contract tests:
-  - enabling Team Play backfills teams deterministically
-  - join assigns to smaller team (tie → A)
-  - `setTeam` is **self-only** and rejects when:
-    - not in lobby phase
-    - teams are locked
-    - invalid team id
-    - not joined to a room
-
-### startGame: phase/transition invariants (“handoff”)
-- startGame transitions lobby → active and emits state to clients.
-- startGame is now **phase-guarded**:
-  - once room is `active`, subsequent `startGame` is rejected/ignored (no re-init side effects)
-- Lobby-only messages are rejected after startGame.
-
-### Team lock gating regression fix (playerCount-gated lock)
-- Restored/confirmed Team Play lock gating expectations:
-  - teams exist while in lobby (even before lock)
-  - teams lock only when roster is complete, rules permit lock (even count), and first `ready=true` occurs
-- Fixed server-side pre-lock teams representation to satisfy integration + contract expectations.
+### Phase 5: Team Play (2 teams) — per-die delegation
+- Bank ownership remains with the turn owner (`activeActorId`) regardless of who resolves a die.
+- Delegation is per-die (not per-roll): different dice can be delegated to different teammates.
+- Delegation is immutable until the die resolves.
+- Deterministic stale/concurrent arbitration: first valid action wins; later stale actions rejected.
 
 ---
 
 ## Files Added / Modified (Latest Session)
+
 - **Modified**
-  - `src/server/wsServer.ts` — leaveRoom handling; team pre-lock + lock gating; startGame phase guard
-  - `src/server/protocol.ts` — leaveRoom message (plus prior lobby/team message types)
-  - `test/lobby.teams.contract.test.ts` — hardened Team Play contract coverage
-- **Added**
-  - `test/wsServer.startGame.handoff.contract.test.ts` — startGame handoff invariants (contract)
+  - `src/engine/tryApply.ts` — explicit “no legal moves” reason for temporarily-illegal selection rejection
+  - `test/contracts/turnDice.contract.test.ts` — Phase 5 contract test coverage (dice lifecycle + team delegation)
 
 ---
 
@@ -64,30 +43,8 @@ git status
 npm test
 ```
 
-### 2) If you need to commit new work
-Run these **one at a time** (separate copy blocks):
-
-```powershell
-git add src/server/protocol.ts
-```
-
-```powershell
-git add src/server/wsServer.ts
-```
-
-```powershell
-git add test/lobby.teams.contract.test.ts
-```
-
-```powershell
-git add test/wsServer.startGame.handoff.contract.test.ts
-```
-
-```powershell
-git commit -m "Lobby leaveRoom + Team Play hardening + startGame phase-guard"
-```
+### 2) Next snapshot step
+- Create **Restart-Complete Snapshot v3.0** (standard contents, no `node_modules`), then update this README and the snapshot manifest if contents change.
 
 ### 3) Next subsystem candidate
-- “StartGame → engine config transfer” (authoritative config source-of-truth):
-  - ensure lobby `gameConfig` → started game config is copied once, immutable after start
-  - ensure options like `teamPlay/teamCount/doubleDice/killRoll` flow through consistently
+- UI integration of server-provided die/forfeit signaling and move previews (server-authoritative; UI does not invent rules).
