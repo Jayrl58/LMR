@@ -161,6 +161,17 @@ export function handleClientMessage(
     };
   }
 
+
+  // Guard: gameplay is forbidden once the game is ended (Rematch flow).
+  if (state.game.phase === "ended") {
+    if (msg.type === "roll" || msg.type === "getLegalMoves" || msg.type === "move") {
+      return {
+        nextState: state,
+        serverMessage: mkError("ENDED_GAME", "Game is over. Waiting for rematch/new game.", reqId),
+      };
+    }
+  }
+
   switch (msg.type) {
     case "roll": {
       // Only the turn owner can ROLL.

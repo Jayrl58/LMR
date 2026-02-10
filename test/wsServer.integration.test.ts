@@ -35,6 +35,21 @@ function makeQueue(ws: WebSocket) {
   };
 }
 
+
+function findBool(obj: any, key: string): boolean | undefined {
+  if (!obj || typeof obj !== "object") return undefined;
+  if (Object.prototype.hasOwnProperty.call(obj, key) && typeof (obj as any)[key] === "boolean") {
+    return (obj as any)[key];
+  }
+  for (const k of Object.keys(obj)) {
+    const v = (obj as any)[k];
+    const got = findBool(v, key);
+    if (typeof got === "boolean") return got;
+  }
+  return undefined;
+}
+
+
 async function nextWithTimeout(next: () => Promise<string>, label: string, ms = 2000) {
   return await Promise.race([
     next(),
@@ -137,4 +152,82 @@ describe("wsServer integration", () => {
     ws.close();
     await server.close();
   });
+
+
+  it("ENDED_GAME: emits endgame results timer and rejects gameplay (contract)", async () => {
+    // Force an initial state that is already terminal.
+    const initialState: any = makeState({ playerCount: 1 }) as any;
+    initialState.phase = "ended";
+    initialState.outcome = initialState.outcome ?? { kind: "individual", winnerPlayerId: "p0" };
+
+    const server = startWsServer({
+      port: 0,
+      initialState,
+      broadcast: false,
+    });
+
+    const ws = new WebSocket(`ws://localhost:${server.port}`);
+    const nextMsg = makeQueue(ws);
+
+    await new Promise<void>((resolve, reject) => {
+      ws.on("open", () => resolve());
+      ws.on("error", (e) => reject(e));
+    });
+
+    // welcome on connect
+    const m0 = JSON.parse(await nextWithTimeout(nextMsg, "welcome"));
+    expect(m0.type).toBe("welcome");
+
+    // hello
+    ws.send(JSON.stringify({ type: "hello", clientId: "p0" }));
+    const m1 = JSON.parse(await nextWithTimeout(nextMsg, "welcomeEcho"));
+    expect(m1.type).toBe("welcome");
+
+    // joinRoom
+    ws.send(JSON.stringify({ type: "joinRoom" }));
+    const m2 = JSON.parse(await nextWithTimeout(nextMsg, "roomJoined"));
+    expect(m2.type).toBe("roomJoined");
+
+    // lobbySync
+    const m3 = JSON.parse(await nextWithTimeout(nextMsg, "lobbySync"));
+    expect(m3.type).toBe("lobbySync");
+
+    // ready + startGame (single-client test)
+    ws.send(JSON.stringify({ type: "setReady", ready: true }));
+    const m4 = JSON.parse(await nextWithTimeout(nextMsg, "lobbySync after ready"));
+    expect(m4.type).toBe("lobbySync");
+
+    ws.send(JSON.stringify({ type: "startGame", playerCount: 1 }));
+    const m5 = JSON.parse(await nextWithTimeout(nextMsg, "lobbySync after start"));
+    expect(m5.type).toBe("lobbySync");
+    expect(m5.lobby.phase).toBe("active");
+
+    // stateSync should reflect terminal gameOver=true
+    const m6 = JSON.parse(await nextWithTimeout(nextMsg, "stateSync after start"));
+    expect(m6.type).toBe("stateSync");
+    const s6 = typeof m6.state === "string" ? JSON.parse(m6.state) : m6.state;
+    expect(s6.phase).toBe("ended");
+    expect(s6.outcome).toBeDefined();
+
+    // Contract (v1.7.5 Rematch Rules): entering ENDED_GAME starts Endgame Results timer (T=180) with visible countdown.
+    // Expect a dedicated timer/countdown message.
+    const t0 = JSON.parse(await nextWithTimeout(nextMsg, "endgameTimer (180s)", 1500));
+    expect(["endgameTimer", "endgameResults", "endgameCountdown"].includes(t0.type)).toBe(true);
+    expect(typeof t0.remaining).toBe("number");
+    expect(t0.remaining).toBe(180);
+
+    // After 1 second, expect 179.
+    const t1 = JSON.parse(await nextWithTimeout(nextMsg, "endgameTimer tick (179s)", 2000));
+    expect(["endgameTimer", "endgameResults", "endgameCountdown"].includes(t1.type)).toBe(true);
+    expect(t1.remaining).toBe(179);
+
+    // Gameplay should be rejected while ENDED_GAME.
+    ws.send(JSON.stringify({ type: "roll", actorId: "p0", die: 1, gameSeq: t0.gameSeq }));
+    const e0 = JSON.parse(await nextWithTimeout(nextMsg, "reject roll in ENDED_GAME"));
+    expect(e0.type).toBe("error");
+
+    ws.close();
+    await server.close();
+  });
+
 });
