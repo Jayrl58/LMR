@@ -74,11 +74,168 @@ function extractTeams(m: any) {
   return m?.lobby?.gameConfig?.teams;
 }
 
+function extractReadyFlags(m: any) {
+  return (m?.lobby?.players ?? []).map((p: any) => p?.ready);
+}
+
+function expectAllReadyFalse(m: any) {
+  const flags = extractReadyFlags(m);
+  expect(flags.length).toBeGreaterThan(0);
+  for (const f of flags) expect(f).toBe(false);
+}
+
 function asSetKey(ids: string[]) {
   return [...new Set(ids)].sort().join("|");
 }
 
 describe("lobby team play lock (playerCount-gated)", () => {
+  it("joinRoom does not implicitly set ready; ready remains false until setReady is received", async () => {
+    const initialState = makeState({ playerCount: 4 }) as any;
+    const server = startWsServer({ port: 0, initialState });
+
+    const ws0 = new WebSocket(`ws://localhost:${server.port}`);
+    const ws1 = new WebSocket(`ws://localhost:${server.port}`);
+    const next0 = makeQueue(ws0);
+    const next1 = makeQueue(ws1);
+
+    await Promise.all([wsOpen(ws0), wsOpen(ws1)]);
+    await Promise.all([
+      waitForType(next0, "welcome", "0 welcome"),
+      waitForType(next1, "welcome", "1 welcome"),
+    ]);
+
+    hello(ws0, "c0");
+    hello(ws1, "c1");
+    await Promise.all([
+      waitForType(next0, "welcome", "0 welcomeEcho"),
+      waitForType(next1, "welcome", "1 welcomeEcho"),
+    ]);
+
+    join(ws0);
+    const j0 = await waitForType(next0, "roomJoined", "0 roomJoined");
+    const roomCode = j0.roomCode as string;
+
+    join(ws1, roomCode);
+    await waitForType(next1, "roomJoined", "1 roomJoined");
+
+    // Enable team play, but do NOT send any setReady messages.
+    setLobbyGameConfig(ws0, { playerCount: 4, teamPlay: true, teamCount: 2 });
+
+    // Expect: lobby has 2 players, teamPlay is enabled, teams are not locked, and ready flags are all false.
+    const l = await waitForLobby(
+      next0,
+      "0 lobby 2 players w/config",
+      (m) =>
+        m.lobby?.players?.length === 2 &&
+        m.lobby?.gameConfig?.teamPlay === true &&
+        m.lobby?.gameConfig?.playerCount === 4
+    );
+
+    expectAllReadyFalse(l);
+
+    const teams = extractTeams(l);
+    expect(teams).toBeTruthy();
+    expect(teams?.isLocked).toBe(false);
+
+    ws0.close();
+    ws1.close();
+    await server.close();
+  });
+
+  it("full roster without any ready does not lock; first setReady(true) locks", async () => {
+    const initialState = makeState({ playerCount: 4 }) as any;
+    const server = startWsServer({ port: 0, initialState });
+
+    // 4 clients join a new room
+    const ws0 = new WebSocket(`ws://localhost:${server.port}`);
+    const ws1 = new WebSocket(`ws://localhost:${server.port}`);
+    const ws2 = new WebSocket(`ws://localhost:${server.port}`);
+    const ws3 = new WebSocket(`ws://localhost:${server.port}`);
+    const next0 = makeQueue(ws0);
+    const next1 = makeQueue(ws1);
+    const next2 = makeQueue(ws2);
+    const next3 = makeQueue(ws3);
+
+    await Promise.all([wsOpen(ws0), wsOpen(ws1), wsOpen(ws2), wsOpen(ws3)]);
+
+    await Promise.all([
+      waitForType(next0, "welcome", "0 welcome"),
+      waitForType(next1, "welcome", "1 welcome"),
+      waitForType(next2, "welcome", "2 welcome"),
+      waitForType(next3, "welcome", "3 welcome"),
+    ]);
+
+    hello(ws0, "c0");
+    hello(ws1, "c1");
+    hello(ws2, "c2");
+    hello(ws3, "c3");
+    await Promise.all([
+      waitForType(next0, "welcome", "0 welcomeEcho"),
+      waitForType(next1, "welcome", "1 welcomeEcho"),
+      waitForType(next2, "welcome", "2 welcomeEcho"),
+      waitForType(next3, "welcome", "3 welcomeEcho"),
+    ]);
+
+    join(ws0);
+    const j0 = await waitForType(next0, "roomJoined", "0 roomJoined");
+    const roomCode = j0.roomCode as string;
+
+    join(ws1, roomCode);
+    join(ws2, roomCode);
+    join(ws3, roomCode);
+    await Promise.all([
+      waitForType(next1, "roomJoined", "1 roomJoined"),
+      waitForType(next2, "roomJoined", "2 roomJoined"),
+      waitForType(next3, "roomJoined", "3 roomJoined"),
+    ]);
+
+    // Enable Team Play, but do NOT send any setReady yet.
+    setLobbyGameConfig(ws0, { playerCount: 4, teamPlay: true, teamCount: 2 });
+
+    // Wait until lobby sees 4 players + config
+    const lBeforeReady = await waitForLobby(
+      next0,
+      "0 lobby 4 players pre-ready",
+      (m) =>
+        m.lobby?.players?.length === 4 &&
+        m.lobby?.gameConfig?.teamPlay === true &&
+        m.lobby?.gameConfig?.playerCount === 4
+    );
+
+    expectAllReadyFalse(lBeforeReady);
+
+    const teamsPre = extractTeams(lBeforeReady);
+    expect(teamsPre).toBeTruthy();
+    expect(teamsPre?.isLocked).toBe(false);
+
+    // Now the first ready after roster complete should lock teams.
+    setReady(ws0, true);
+
+    const lLocked = await waitForLobby(
+      next0,
+      "0 lobby locked",
+      (m) => m.lobby?.players?.length === 4 && !!extractTeams(m)?.isLocked
+    );
+
+    const teams = extractTeams(lLocked);
+    expect(teams?.isLocked).toBe(true);
+    expect(Array.isArray(teams?.teamA)).toBe(true);
+    expect(Array.isArray(teams?.teamB)).toBe(true);
+    expect(teams.teamA.length).toBe(2);
+    expect(teams.teamB.length).toBe(2);
+
+    // Partition equals players
+    const playerIds4 = (lLocked.lobby?.players ?? []).map((p: any) => p.playerId);
+    const allTeamIds4 = [...teams.teamA, ...teams.teamB];
+    expect(asSetKey(allTeamIds4)).toBe(asSetKey(playerIds4));
+
+    ws0.close();
+    ws1.close();
+    ws2.close();
+    ws3.close();
+    await server.close();
+  });
+
   it("does not lock teams before roster is complete; locks once complete on first ready=true", async () => {
     const initialState = makeState({ playerCount: 4 }) as any;
     const server = startWsServer({ port: 0, initialState });
@@ -126,7 +283,10 @@ describe("lobby team play lock (playerCount-gated)", () => {
     await waitForLobby(
       next0,
       "0 lobby w/config",
-      (m) => m.lobby?.players?.length === 3 && m.lobby?.gameConfig?.teamPlay === true && m.lobby?.gameConfig?.playerCount === 4
+      (m) =>
+        m.lobby?.players?.length === 3 &&
+        m.lobby?.gameConfig?.teamPlay === true &&
+        m.lobby?.gameConfig?.playerCount === 4
     );
 
     // Ready before roster complete => should NOT lock teams (but teams may exist/assign)
@@ -149,14 +309,14 @@ describe("lobby team play lock (playerCount-gated)", () => {
     expect(teamsNoLock.teamB.length).toBe(1);
 
     // 4th client joins
-    const ws3 = new WebSocket(`ws://localhost:${server.port}`);
-    const next3 = makeQueue(ws3);
-    await wsOpen(ws3);
-    await waitForType(next3, "welcome", "3 welcome");
-    hello(ws3, "c3");
-    await waitForType(next3, "welcome", "3 welcomeEcho");
-    join(ws3, roomCode);
-    await waitForType(next3, "roomJoined", "3 roomJoined");
+    const ws3b = new WebSocket(`ws://localhost:${server.port}`);
+    const next3b = makeQueue(ws3b);
+    await wsOpen(ws3b);
+    await waitForType(next3b, "welcome", "3 welcome");
+    hello(ws3b, "c3b");
+    await waitForType(next3b, "welcome", "3 welcomeEcho");
+    join(ws3b, roomCode);
+    await waitForType(next3b, "roomJoined", "3 roomJoined");
 
     // Ensure lobby sees 4 players
     await waitForLobby(next0, "0 lobby 4 players", (m) => m.lobby?.players?.length === 4);
@@ -195,7 +355,7 @@ describe("lobby team play lock (playerCount-gated)", () => {
     ws0.close();
     ws1.close();
     ws2.close();
-    ws3.close();
+    ws3b.close();
     await server.close();
   });
 
