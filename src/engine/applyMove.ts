@@ -12,6 +12,7 @@
 import type { GameState, Move, PegState, PlayerId, SpotRef, TeamId } from "../types";
 import { shallowCloneState, countFinishedPegs } from "./stateUtils";
 import { isTeamFinished, teamFinishOrder } from "./teams";
+import { validateState } from "./validateState";
 
 function finishTargetIndex(finishedCount: number): 0 | 1 | 2 | 3 {
   const t = 3 - finishedCount;
@@ -48,14 +49,19 @@ function applyCaptures(state: GameState, move: Move): void {
 export function applyMove(state: GameState, move: Move): { state: GameState } {
   const next = shallowCloneState(state);
 
-  if (move.kind === "pass") {
+  const finalize = (tag: string) => {
+    validateState(next, `applyMove:${tag}`);
     return { state: next };
+  };
+
+  if (move.kind === "pass") {
+    return finalize("pass");
   }
 
   // Kill is capture-only (no movement)
   if (move.kind === "kill") {
     applyCaptures(next, move);
-    return { state: next };
+    return finalize("kill");
   }
 
   // Apply captures first (victims removed from landing spot)
@@ -63,17 +69,17 @@ export function applyMove(state: GameState, move: Move): { state: GameState } {
 
   if (move.kind === "enter") {
     setPegPosition(next, move.actorPlayerId, move.pegIndex, move.to, false);
-    return { state: next };
+    return finalize("enter");
   }
 
   if (move.kind === "enterCenter") {
     setPegPosition(next, move.actorPlayerId, move.pegIndex, { zone: "center" }, false);
-    return { state: next };
+    return finalize("enterCenter");
   }
 
   if (move.kind === "exitCenter") {
     setPegPosition(next, move.actorPlayerId, move.pegIndex, move.to, false);
-    return { state: next };
+    return finalize("exitCenter");
   }
 
   if (move.kind === "advance") {
@@ -116,8 +122,8 @@ export function applyMove(state: GameState, move: Move): { state: GameState } {
       }
     }
 
-    return { state: next };
+    return finalize("advance");
   }
 
-  return { state: next };
+  return finalize("fallback");
 }
