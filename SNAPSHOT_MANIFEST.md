@@ -1,3 +1,47 @@
+Snapshot Version: v3.1  
+Snapshot Date: 2026-02-13  
+Snapshot Type: Engine Invariant Layer + Repository Stabilization
+
+---
+
+## Summary of Changes Since Prior Snapshot (v3.0)
+
+### Engine: validateState invariant layer
+- Implemented shape-only `validateState()` enforcement.
+- Integrated invariant checks into `applyMove` lifecycle boundaries.
+- Relaxed playerCount contract to allow pre-active states (0..8) while enforcing >=2 during active/ended phases.
+- Restored full green test suite under invariant enforcement.
+
+### Repository Hardening
+- Configured GitHub remote (origin).
+- Removed `node_modules` from version control.
+- Added proper `.gitignore`.
+- Verified clean working tree and successful push.
+
+---
+
+## Files of Note
+
+### Engine
+- `src/engine/validateState.ts`
+- `src/engine/applyMove.ts` (integration boundary calls)
+
+---
+
+## Snapshot Integrity Notes
+- All 54 test files green (123 passing, 3 intentionally skipped).
+- No Rules Authority changes.
+- No board geometry changes.
+- No Team Play scope expansion.
+- Invariant layer is shape-only (no rule duplication).
+
+---
+
+## Explicit Non-Changes
+- No gameplay feature expansion.
+- No UI integration changes.
+- No modification to Phase 5 delegation contracts.
+
 # SNAPSHOT MANIFEST
 LMR Project — Restart-Complete Snapshot
 
