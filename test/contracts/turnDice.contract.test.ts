@@ -194,7 +194,7 @@ describe("Phase 5 contract targets: pending dice + auto-pass timing (server)", (
 
     const pending = (r1.nextState as any).pendingDice;
     expect(Array.isArray(pending)).toBe(true);
-    expect((pending as any[]).slice().sort()).toEqual([1, 5]);
+    expect((pending as any[]).map((pd: any) => pd.value).slice().sort()).toEqual([1, 5]);
   });
 
   it("temporarily-illegal die selection is rejected (Option A): cannot resolve 5 first in 1+5 opening; must resolve 1 first", () => {
@@ -244,7 +244,7 @@ describe("Phase 5 contract targets: pending dice + auto-pass timing (server)", (
     // State unchanged: both dice remain pending/unresolved (no forfeiture).
     const pending = (r2.nextState as any).pendingDice;
     expect(Array.isArray(pending)).toBe(true);
-    expect((pending as any[]).slice().sort()).toEqual([1, 5]);
+    expect((pending as any[]).map((pd: any) => pd.value).slice().sort()).toEqual([1, 5]);
   });
   
 it("legality can become valid later in the same turn: after resolving 1 to enter, 5 becomes legal and can be resolved", async () => {

@@ -8,6 +8,8 @@ import {
   hashState,
 } from "../engine";
 
+export type PendingDie = { value: number; controllerId: string | null };
+
 export type SessionState = {
   game: GameState;
   turn: TurnInfo;
@@ -16,7 +18,7 @@ export type SessionState = {
    * External-dice (Option A): remaining dice that are still resolvable this turn.
    * When present and non-empty, the server must NOT require a new roll.
    */
-  pendingDice?: number[];
+  pendingDice?: PendingDie[];
 
   /**
    * Acting player for the last roll (may be teammate under team play distribution).
@@ -133,6 +135,25 @@ function subtractDice(pool: number[], used: number[]): { ok: boolean; remaining:
   }
   return { ok: true, remaining };
 }
+
+function subtractPendingDice(
+  pool: PendingDie[],
+  used: number[]
+): { ok: boolean; remaining: PendingDie[] } {
+  const remaining = pool.slice();
+  for (const u of used) {
+    const idx = remaining.findIndex((pd) => pd.value === u);
+    if (idx < 0) return { ok: false, remaining: pool.slice() };
+    remaining.splice(idx, 1);
+  }
+  return { ok: true, remaining };
+}
+
+function setPendingControllers(pool: PendingDie[], controllerId: string | null): PendingDie[] {
+  return pool.map((pd) => ({ ...pd, controllerId }));
+}
+
+
 
 // overloads
 export function handleClientMessage(state: SessionState, msg: ClientMessage): HandleResult;
@@ -273,7 +294,7 @@ const rollerId = String(state.turn.nextActorId);
       const nextState: SessionState = {
         ...state,
         turn: nextTurn,
-        pendingDice: dice,
+        pendingDice: dice.map((v) => ({ value: v, controllerId: recipientId })),
         actingActorId: recipientId,
         bankedExtraDice: bankedAfter,
       };
@@ -323,7 +344,7 @@ const rollerId = String(state.turn.nextActorId);
         }
 
         // The requested die must be available in pendingDice.
-        const chk = subtractDice(state.pendingDice, dice);
+        const chk = subtractPendingDice(state.pendingDice, dice);
         if (!chk.ok) {
           return {
             nextState: state,
@@ -373,7 +394,7 @@ const rollerId = String(state.turn.nextActorId);
       }
 
       // ENFORCEMENT: When pendingDice exists, move must spend EXACTLY ONE die.
-      let remainingDice: number[] = [];
+      let remainingPendingDice: PendingDie[] = [];
       if (Array.isArray(state.pendingDice) && state.pendingDice.length > 0) {
         if (diceUsed.length !== 1) {
           return {
@@ -386,7 +407,7 @@ const rollerId = String(state.turn.nextActorId);
           };
         }
 
-        const sub = subtractDice(state.pendingDice, diceUsed);
+        const sub = subtractPendingDice(state.pendingDice, diceUsed);
         if (!sub.ok) {
           return {
             nextState: state,
@@ -397,7 +418,7 @@ const rollerId = String(state.turn.nextActorId);
             ),
           };
         }
-        remainingDice = sub.remaining;
+        remainingPendingDice = sub.remaining;
       }
 
       const response = tryApplyMoveWithResponse(
@@ -437,10 +458,10 @@ const rollerId = String(state.turn.nextActorId);
         if (
           Array.isArray(state.pendingDice) &&
           state.pendingDice.length > 0 &&
-          remainingDice.length > 0
+          remainingPendingDice.length > 0
         ) {
-          const hasAnyLegalMove = remainingDice.some((d) => {
-            const lm = legalMoves(nextGame as any, rollerId as any, [d] as any) as any[];
+          const hasAnyLegalMove = remainingPendingDice.some((pd) => {
+            const lm = legalMoves(nextGame as any, rollerId as any, [pd.value] as any) as any[];
             return Array.isArray(lm) && lm.length > 0;
           });
 
@@ -454,12 +475,12 @@ const rollerId = String(state.turn.nextActorId);
             const nextState: SessionState = {
               game: nextGame,
               turn: nextTurn,
-              pendingDice: remainingDice,
+              pendingDice: setPendingControllers(remainingPendingDice, rollerId),
               actingActorId: undefined, // next resolution may be delegated again
               bankedExtraDice: banked1,
             };
 
-            (response as any).turn = { ...nextTurn, pendingDice: remainingDice } as any;
+            (response as any).turn = { ...nextTurn, pendingDice: setPendingControllers(remainingPendingDice, rollerId) } as any;
             (response.result as any).turn = (response as any).turn;
 
             return {
@@ -469,7 +490,7 @@ const rollerId = String(state.turn.nextActorId);
           }
 
           // Otherwise, remaining dice exist but have no legal moves; exhaust them.
-          remainingDice = [];
+          remainingPendingDice = [];
         }
 
 

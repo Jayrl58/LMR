@@ -43,7 +43,7 @@ describe("moveResult turn consistency", () => {
     // Contract: response.turn must reflect the server session's remaining pending dice,
     // not the engine's internal "dice slice(1)" behavior on the one-die move message.
     expect(mr.response?.turn?.awaitingDice).toBe(false);
-    expect(mr.response?.turn?.pendingDice).toEqual([2]);
+    expect(mr.response?.turn?.pendingDice).toEqual([{ value: 2, controllerId: pid }]);
 
     // Also require internal consistency with the engine-derived turn in result.turn
     expect(mr.response?.result?.turn?.awaitingDice).toBe(mr.response?.turn?.awaitingDice);
@@ -52,6 +52,6 @@ describe("moveResult turn consistency", () => {
 
     // And the next session state must keep resolving dice
     expect(r2.nextState.turn.awaitingDice).toBe(false);
-    expect(r2.nextState.pendingDice).toEqual([2]);
+    expect(r2.nextState.pendingDice).toEqual([{ value: 2, controllerId: pid }]);
   });
 });
