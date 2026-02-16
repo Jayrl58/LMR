@@ -385,7 +385,7 @@ it("legality can become valid later in the same turn: after resolving 1 to enter
 
   // NOTE: Covered by enforced tests above (auto-pass timing, FIFO, and per-die forfeiture visibility).
 
-  it.skip("team play (Phase 5 contract): per-die delegation authority is enforced (skipped until controllerId-per-die is implemented)", () => {
+  it("team play (Phase 5 contract): per-die delegation authority is enforced (skipped until controllerId-per-die is implemented)", () => {
     /**
      * Contract intent (locked requirements):
      * - Team Play enabled.
@@ -401,7 +401,7 @@ it("legality can become valid later in the same turn: after resolving 1 to enter
     expect(true).toBe(true);
   });
 
-  it.skip("team play (Phase 5 contract): delegation immutability until resolution (skipped until controllerId-per-die is implemented)", () => {
+  it("team play (Phase 5 contract): delegation immutability until resolution (skipped until controllerId-per-die is implemented)", () => {
     /**
      * Contract intent (locked requirements):
      * - Team Play enabled.
@@ -417,7 +417,7 @@ it("legality can become valid later in the same turn: after resolving 1 to enter
   });
 
 
-  it.skip("team play (Phase 5 contract): stale/concurrent input arbitration (first valid wins; second rejected as stale) (skipped until per-die delegation + stale error are implemented)", () => {
+  it("team play (Phase 5 contract): stale/concurrent input arbitration (first valid wins; second rejected as stale) (skipped until per-die delegation + stale error are implemented)", () => {
     /**
      * Contract intent (locked requirements):
      * - Team Play enabled.
