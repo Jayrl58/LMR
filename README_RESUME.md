@@ -1,3 +1,20 @@
+## 2026-02-16 — Engine Stabilization + Team Audit Prep
+
+Status:
+- 126 / 126 tests passing
+- validateState aligned with PlayerId→Player map shape
+- publicApi legalMoves wiring corrected (no circular/undefined import)
+- Team configuration invariants enforcing:
+  - 4p → 2x2
+  - 6p → 3x3
+  - 8p → 4x4
+- MVP boundary remains: 2-team model only
+
+Next Session Focus:
+- Expand team invariants to allow:
+  - 6p → 2x3 OR 3x2
+  - 8p → 2x4 OR 4x2
+- Add negative-shape tests for invalid team partitions
 # LMR Project — README_RESUME
 
 ## Snapshot Status
