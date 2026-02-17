@@ -6,7 +6,7 @@ import { makeState } from "../src/engine/makeState";
 import { chooseRollRecipient, legalMoves } from "../src/engine";
 
 describe("server: teamPlay finisher keeps turn + can delegate subsequent rolls", () => {
-  it("after a finished player acts (or is the turn owner), they keep nextActorId and subsequent roll delegates to teammate", () => {
+  it("finished turn owner keeps nextActorId; roll -> stateSync; assign -> stateSync; teammate gets legalMoves and can move; subsequent roll can be delegated again", () => {
     const p0 = "p0";
     const p2 = "p2";
 
@@ -15,7 +15,7 @@ describe("server: teamPlay finisher keeps turn + can delegate subsequent rolls",
     // Force p0 to be finished at start to activate delegation on roll.
     game.players[p0].hasFinished = true;
 
-    // Sanity: engine chooses teammate on a die=1
+    // Sanity: engine chooses teammate on a die=1 and teammate has legal moves.
     expect(chooseRollRecipient(game as any, p0 as any, [1] as any)).toBe(p2);
     expect(legalMoves(game as any, p2 as any, [1] as any).length).toBeGreaterThan(0);
 
@@ -27,15 +27,40 @@ describe("server: teamPlay finisher keeps turn + can delegate subsequent rolls",
       bankedExtraDice: 0,
     };
 
-    // Roll 1: should delegate to p2
+    // Roll 1: returns stateSync with unassigned pending dice
     const r1 = handleClientMessage(session0, { type: "roll", actorId: p0, dice: [1] } as any);
-    expect(r1.serverMessage.type).toBe("legalMoves");
-    expect((r1.serverMessage as any).actorId).toBe(p2);
+    expect(r1.serverMessage.type).toBe("stateSync");
 
-    const delegatedMove = (r1.serverMessage as any).moves[0];
+    const pending1 = (r1.nextState as any).pendingDice;
+    expect(Array.isArray(pending1)).toBe(true);
+    expect(pending1.length).toBe(1);
+    expect(pending1[0].value).toBe(1);
+    expect(pending1[0].controllerId).toBeNull();
+
+    // Turn owner assigns die to p2; assignment returns stateSync
+    const r1a = handleClientMessage(r1.nextState as any, {
+      type: "assignPendingDie",
+      actorId: p0,
+      dieIndex: 0,
+      controllerId: p2,
+    } as any);
+
+    expect(r1a.serverMessage.type).toBe("stateSync");
+
+    // Teammate requests legalMoves
+    const r1b = handleClientMessage(r1a.nextState as any, {
+      type: "getLegalMoves",
+      actorId: p2,
+      dice: [1],
+    } as any);
+
+    expect(r1b.serverMessage.type).toBe("legalMoves");
+    expect((r1b.serverMessage as any).actorId).toBe(p2);
+
+    const delegatedMove = (r1b.serverMessage as any).moves[0];
 
     // Teammate makes the move
-    const r2 = handleClientMessage(r1.nextState, {
+    const r2 = handleClientMessage(r1b.nextState as any, {
       type: "move",
       actorId: p2,
       dice: [1],
@@ -45,26 +70,30 @@ describe("server: teamPlay finisher keeps turn + can delegate subsequent rolls",
     expect(r2.serverMessage.type).toBe("moveResult");
     expect((r2.serverMessage as any).response.ok).toBe(true);
 
-    const gameAfter: any = r2.nextState.game;
-    const p2Finished = gameAfter.players[p2].hasFinished === true;
-
-    if (p2Finished) {
-      expect(r2.nextState.turn.nextActorId).toBe(p2);
-    }
-
-    // Regardless, nextActorId must remain a valid player id string.
-    expect(typeof r2.nextState.turn.nextActorId).toBe("string");
-
-    // For this delegation test, clear any banked extra dice (bank logic is tested elsewhere).
+    // Subsequent roll can be delegated again (reset to p0 awaitingDice for this test)
     const session3: SessionState = {
       ...r2.nextState,
       bankedExtraDice: 0,
       bankedExtraRolls: undefined as any,
       turn: { ...r2.nextState.turn, nextActorId: p0, awaitingDice: true } as any,
+      pendingDice: undefined,
+      actingActorId: undefined,
     };
 
     const r3 = handleClientMessage(session3, { type: "roll", actorId: p0, dice: [1] } as any);
-    expect(r3.serverMessage.type).toBe("legalMoves");
-    expect((r3.serverMessage as any).actorId).toBe(p2);
+    expect(r3.serverMessage.type).toBe("stateSync");
+
+    const pending3 = (r3.nextState as any).pendingDice;
+    expect(Array.isArray(pending3)).toBe(true);
+    expect(pending3.length).toBe(1);
+    expect(pending3[0].controllerId).toBeNull();
+
+    const r3a = handleClientMessage(r3.nextState as any, {
+      type: "assignPendingDie",
+      actorId: p0,
+      dieIndex: 0,
+      controllerId: p2,
+    } as any);
+    expect(r3a.serverMessage.type).toBe("stateSync");
   });
 });

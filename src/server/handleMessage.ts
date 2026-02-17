@@ -53,17 +53,26 @@ function mkError(code: any, message: string, reqId?: string): ServerMessage {
 }
 
 function mkStateSync(roomCode: string, s: SessionState, reqId?: string): ServerMessage {
+  // TurnInfo is intentionally minimal in protocol.ts; we attach extra fields (pendingDice, bankedExtraDice)
+  // as a runtime-compatible extension used by tests and debug UIs.
+  const turnForMsg: any = { ...s.turn };
+  if (Array.isArray(s.pendingDice)) turnForMsg.pendingDice = s.pendingDice;
+  if (typeof (s as any).bankedExtraDice === "number" && (s as any).bankedExtraDice > 0) {
+    turnForMsg.bankedExtraDice = (s as any).bankedExtraDice;
+  }
+
   return withReqId(
     {
       type: "stateSync",
       roomCode,
       state: serializeState(s.game),
       stateHash: hashState(s.game),
-      turn: s.turn,
+      turn: turnForMsg,
     } as any,
     reqId
   );
 }
+
 
 function mkLegalMoves(
   roomCode: string,
@@ -103,6 +112,39 @@ function computeNextActorId(game: any, current: string): string {
   const idx = order.indexOf(current);
   if (idx < 0) return order[0];
   return order[(idx + 1) % order.length];
+}
+
+
+function getTeamMembers(game: any, rollerId: string): string[] {
+  const teamPlayOn = game?.config?.options?.teamPlay === true;
+  if (!teamPlayOn) return [rollerId];
+
+  const players = game?.players ?? {};
+  const rollerTeamId = players?.[rollerId]?.teamId;
+  if (!rollerTeamId) return [rollerId];
+
+  return Object.keys(players).filter((pid) => players?.[pid]?.teamId === rollerTeamId);
+}
+
+function isSameTeam(game: any, a: string, b: string): boolean {
+  const players = game?.players ?? {};
+  const ta = players?.[a]?.teamId;
+  const tb = players?.[b]?.teamId;
+  return !!ta && ta === tb;
+}
+
+function hasAnyLegalMoveForTeam(game: any, rollerId: string, dieValue: number): boolean {
+  const members = getTeamMembers(game, rollerId);
+  for (const pid of members) {
+    const lm = legalMoves(game as any, pid as any, [dieValue] as any) as any[];
+    if (Array.isArray(lm) && lm.length > 0) return true;
+  }
+  return false;
+}
+
+function hasLegalMoveForPlayer(game: any, playerId: string, dieValue: number): boolean {
+  const lm = legalMoves(game as any, playerId as any, [dieValue] as any) as any[];
+  return Array.isArray(lm) && lm.length > 0;
 }
 
 /**
@@ -185,7 +227,7 @@ export function handleClientMessage(
 
   // Guard: gameplay is forbidden once the game is ended (Rematch flow).
   if (state.game.phase === "ended") {
-    if (msg.type === "roll" || msg.type === "getLegalMoves" || msg.type === "move") {
+    if (msg.type === "roll" || msg.type === "getLegalMoves" || msg.type === "move" || msg.type === "assignPendingDie") {
       return {
         nextState: state,
         serverMessage: mkError("ENDED_GAME", "Game is over. Waiting for rematch/new game.", reqId),
@@ -194,351 +236,458 @@ export function handleClientMessage(
   }
 
   switch (msg.type) {
-    case "roll": {
-      // Only the turn owner can ROLL.
-      if ((msg as any).actorId !== state.turn.nextActorId) {
-        return {
-          nextState: state,
-          serverMessage: mkError(
-            "NOT_YOUR_TURN",
-            `Not your turn. Expected actorId=${state.turn.nextActorId}.`,
-            reqId
-          ),
-        };
-      }
+    
+case "roll": {
+  // Only the turn owner can ROLL.
+  if ((msg as any).actorId !== state.turn.nextActorId) {
+    return {
+      nextState: state,
+      serverMessage: mkError(
+        "NOT_YOUR_TURN",
+        `Not your turn. Expected actorId=${state.turn.nextActorId}.`,
+        reqId
+      ),
+    };
+  }
 
+  // If there are still pending dice to resolve, a new roll is not allowed.
+  if (Array.isArray(state.pendingDice) && state.pendingDice.length > 0) {
+    return {
+      nextState: state,
+      serverMessage: mkError(
+        "BAD_TURN_STATE",
+        "Cannot roll while there are pending dice to resolve.",
+        reqId
+      ),
+    };
+  }
 
-      // If there are still pending dice to resolve, a new roll is not allowed.
-      if (Array.isArray(state.pendingDice) && state.pendingDice.length > 0) {
-        return {
-          nextState: state,
-          serverMessage: mkError(
-            "BAD_TURN_STATE",
-            "Cannot roll while there are pending dice to resolve.",
-            reqId
-          ),
-        };
-      }
+  const dice = normalizeDice(msg as any);
+  if (!dice) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_MESSAGE", "Invalid roll message dice.", reqId),
+    };
+  }
 
-      const dice = normalizeDice(msg as any);
-      if (!dice) {
-        return {
-          nextState: state,
-          serverMessage: mkError("BAD_MESSAGE", "Invalid roll message dice.", reqId),
-        };
-      }
+  // Transitional normalization: canonical bankedExtraDice; accept legacy inbound-only bank.
+  const banked0 = Number.isInteger(state.bankedExtraDice) ? (state.bankedExtraDice as number) : 0;
 
-      
-      // Transitional normalization: canonical bankedExtraDice; accept legacy bankedExtraDice inbound-only.
-      const banked0 =
-        Number.isInteger(state.bankedExtraDice) ? (state.bankedExtraDice as number) :
-        0;
+  // v1.7.4 banked cashout: if N banked extra dice exist, the next roll must consist of exactly N dice.
+  if (banked0 > 0 && dice.length !== banked0) {
+    return {
+      nextState: state,
+      serverMessage: mkError(
+        "BAD_ROLL",
+        `When ${banked0} banked extra dice exist, you must roll exactly ${banked0} dice.`,
+        reqId
+      ),
+    };
+  }
 
-      // v1.7.4 banked cashout: if N banked extra dice exist, the next roll must consist of exactly N dice.
-      if (banked0 > 0 && dice.length !== banked0) {
-        return {
-          nextState: state,
-          serverMessage: mkError(
-            "BAD_ROLL",
-            `When ${banked0} banked extra dice exist, you must roll exactly ${banked0} dice.`,
-            reqId
-          ),
-        };
-      }
+  const rollerId = String(state.turn.nextActorId);
 
-const rollerId = String(state.turn.nextActorId);
+  // Banked extra dice are consumed on roll (not on move).
+  // v1.7.4: a bank cashout roll consumes the entire existing bank, then adds any newly earned extra dice.
+  const earnedFromRoll = dice.reduce((acc, v) => acc + (v === 1 || v === 6 ? 1 : 0), 0);
+  const bankedAfter = earnedFromRoll;
 
-      // Banked extra dice are consumed on roll (not on move).
-      // v1.7.4: a bank cashout roll consumes the entire existing bank, then adds any newly earned extra dice.
-      const earnedFromRoll = dice.reduce(
-        (acc, v) => acc + (v === 1 || v === 6 ? 1 : 0),
-        0
-      );
-      const bankedAfter = earnedFromRoll;
+  const teamPlayOn = state.game?.config?.options?.teamPlay === true;
 
-      // Choose who ACTS for this roll (may be teammate).
-      const recipientId = String(
-        chooseRollRecipient(state.game as any, rollerId as any, dice as any)
-      );
-
-      const moves = legalMoves(state.game as any, recipientId as any, dice as any) as any[];
-
-      // Auto-pass when no legal moves.
-      // Invariant K: the turn must NOT pass while banked extra dice remain.
-      if (moves.length === 0) {
-        const nextActorId = bankedAfter > 0
-          ? rollerId
-          : computeNextActorId(state.game as any, rollerId);
-        const nextTurn: TurnInfo = {
-          ...state.turn,
-          nextActorId,
-          awaitingDice: true,
-        };
-
-        const nextState: SessionState = {
-          ...state,
-          turn: nextTurn,
-          pendingDice: undefined,
-          actingActorId: undefined,
-          bankedExtraDice: bankedAfter,
-        };
-
-        return {
-          nextState,
-          serverMessage: mkStateSync(roomCode, nextState, reqId),
-        };
-      }
-
-      const nextTurn: TurnInfo = { ...state.turn, awaitingDice: false };
+  // Team-play delegation model:
+  // - Pending dice start UNASSIGNED (controllerId=null).
+  // - Turn owner assigns each die to a teammate who has at least one legal move for that die.
+  // - If the ENTIRE team has no legal moves for ALL rolled dice, the roll auto-passes.
+  if (teamPlayOn) {
+    const anyTeamMove = dice.some((v) => hasAnyLegalMoveForTeam(state.game as any, rollerId, v));
+    if (!anyTeamMove) {
+      const nextActorId = bankedAfter > 0 ? rollerId : computeNextActorId(state.game as any, rollerId);
+      const nextTurn: TurnInfo = {
+        ...state.turn,
+        nextActorId,
+        awaitingDice: true,
+      };
 
       const nextState: SessionState = {
         ...state,
         turn: nextTurn,
-        pendingDice: dice.map((v) => ({ value: v, controllerId: recipientId })),
-        actingActorId: recipientId,
+        pendingDice: undefined,
+        actingActorId: undefined,
         bankedExtraDice: bankedAfter,
       };
 
-            const turnForMsg: any = { ...nextTurn };
-      if (typeof bankedAfter === "number" && bankedAfter > 0) {
-        turnForMsg.bankedExtraDice = bankedAfter;
-      }
-
       return {
         nextState,
-        serverMessage: ({ ...(mkLegalMoves(roomCode, recipientId, dice, moves, reqId) as any), turn: turnForMsg } as any),
+        serverMessage: mkStateSync(roomCode, nextState, reqId),
       };
     }
 
-    case "getLegalMoves": {
-      if ((msg as any).actorId !== state.turn.nextActorId) {
-        return {
-          nextState: state,
-          serverMessage: mkError(
-            "NOT_YOUR_TURN",
-            `Not your turn. Expected actorId=${state.turn.nextActorId}.`,
-            reqId
-          ),
-        };
-      }
+    const nextTurn: TurnInfo = { ...state.turn, awaitingDice: false };
 
-      const dice = normalizeDice(msg as any);
-      if (!dice) {
-        return {
-          nextState: state,
-          serverMessage: mkError("BAD_MESSAGE", "Invalid getLegalMoves dice.", reqId),
-        };
-      }
+    const nextState: SessionState = {
+      ...state,
+      turn: nextTurn,
+      pendingDice: dice.map((v) => ({ value: v, controllerId: null })),
+      actingActorId: undefined,
+      bankedExtraDice: bankedAfter,
+    };
 
-      // ENFORCEMENT: When pendingDice exists, getLegalMoves must request EXACTLY ONE die.
-      if (Array.isArray(state.pendingDice) && state.pendingDice.length > 0) {
-        if (dice.length !== 1) {
-          return {
-            nextState: state,
-            serverMessage: mkError(
-              "BAD_TURN_STATE",
-              "When pending dice exist, getLegalMoves must specify exactly one die.",
-              reqId
-            ),
-          };
-        }
+    return {
+      nextState,
+      serverMessage: mkStateSync(roomCode, nextState, reqId),
+    };
+  }
 
-        // The requested die must be available in pendingDice.
-        const chk = subtractPendingDice(state.pendingDice, dice);
-        if (!chk.ok) {
-          return {
-            nextState: state,
-            serverMessage: mkError(
-              "BAD_TURN_STATE",
-              "Requested die is not available in pending dice.",
-              reqId
-            ),
-          };
-        }
-      }
+  // Non-team play: roller controls the dice immediately (backward compatible behavior).
+  const moves = legalMoves(state.game as any, rollerId as any, dice as any) as any[];
 
-      const rollerId = String(state.turn.nextActorId);
-      const recipientId = String(
-        chooseRollRecipient(state.game as any, rollerId as any, dice as any)
-      );
-      const moves = legalMoves(state.game as any, recipientId as any, dice as any) as any[];
+  // Auto-pass when no legal moves.
+  // Invariant K: the turn must NOT pass while banked extra dice remain.
+  if (moves.length === 0) {
+    const nextActorId = bankedAfter > 0 ? rollerId : computeNextActorId(state.game as any, rollerId);
+    const nextTurn: TurnInfo = {
+      ...state.turn,
+      nextActorId,
+      awaitingDice: true,
+    };
 
+    const nextState: SessionState = {
+      ...state,
+      turn: nextTurn,
+      pendingDice: undefined,
+      actingActorId: undefined,
+      bankedExtraDice: bankedAfter,
+    };
+
+    return {
+      nextState,
+      serverMessage: mkStateSync(roomCode, nextState, reqId),
+    };
+  }
+
+  const nextTurn: TurnInfo = { ...state.turn, awaitingDice: false };
+
+  const nextState: SessionState = {
+    ...state,
+    turn: nextTurn,
+    pendingDice: dice.map((v) => ({ value: v, controllerId: rollerId })),
+    actingActorId: rollerId,
+    bankedExtraDice: bankedAfter,
+  };
+
+  const turnForMsg: any = { ...nextTurn };
+  if (typeof bankedAfter === "number" && bankedAfter > 0) {
+    turnForMsg.bankedExtraDice = bankedAfter;
+  }
+
+  return {
+    nextState,
+    serverMessage: ({ ...(mkLegalMoves(roomCode, rollerId, dice, moves, reqId) as any), turn: turnForMsg } as any),
+  };
+}
+
+
+case "assignPendingDie": {
+  const rollerId = String(state.turn.nextActorId);
+
+  // Only the current turn owner may assign.
+  if ((msg as any).actorId !== rollerId) {
+    return {
+      nextState: state,
+      serverMessage: mkError(
+        "NOT_YOUR_TURN",
+        `Not your turn. Expected actorId=${rollerId}.`,
+        reqId
+      ),
+    };
+  }
+
+  const teamPlayOn = state.game?.config?.options?.teamPlay === true;
+  if (!teamPlayOn) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_TURN_STATE", "assignPendingDie is only valid in team play.", reqId),
+    };
+  }
+
+  if (!Array.isArray(state.pendingDice) || state.pendingDice.length === 0) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_TURN_STATE", "No pending dice to assign.", reqId),
+    };
+  }
+
+  const dieIndex = Number((msg as any).dieIndex);
+  if (!Number.isInteger(dieIndex) || dieIndex < 0 || dieIndex >= state.pendingDice.length) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_MESSAGE", "Invalid dieIndex for assignPendingDie.", reqId),
+    };
+  }
+
+  const controllerId = String((msg as any).controllerId ?? "");
+  if (!controllerId) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_MESSAGE", "Missing controllerId for assignPendingDie.", reqId),
+    };
+  }
+
+  if (!isSameTeam(state.game as any, rollerId, controllerId)) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_MESSAGE", "controllerId must be on the same team as the turn owner.", reqId),
+    };
+  }
+
+  const pd = state.pendingDice[dieIndex];
+  if (pd.controllerId != null) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_TURN_STATE", "This pending die is already assigned.", reqId),
+    };
+  }
+
+  // Guardrail: cannot assign a die to a player who has no legal moves for that die.
+  if (!hasLegalMoveForPlayer(state.game as any, controllerId, pd.value)) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_TURN_STATE", "Cannot assign: selected player has no legal moves for this die.", reqId),
+    };
+  }
+
+  const nextPending = state.pendingDice.map((x, i) => (i === dieIndex ? { ...x, controllerId } : x));
+
+  const nextState: SessionState = {
+    ...state,
+    pendingDice: nextPending,
+    actingActorId: undefined,
+  };
+
+  return {
+    nextState,
+    serverMessage: mkStateSync(roomCode, nextState, reqId),
+  };
+}
+
+    
+case "getLegalMoves": {
+  const actorId = String((msg as any).actorId ?? "");
+  if (!actorId) {
+    return { nextState: state, serverMessage: mkError("BAD_MESSAGE", "Missing actorId.", reqId) };
+  }
+
+  const dice = normalizeDice(msg as any);
+  if (!dice) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_MESSAGE", "Invalid getLegalMoves dice.", reqId),
+    };
+  }
+
+  // If pending dice exist, ONLY the controller of that specific die may request legal moves for it.
+  if (Array.isArray(state.pendingDice) && state.pendingDice.length > 0) {
+    if (dice.length !== 1) {
       return {
         nextState: state,
-        serverMessage: mkLegalMoves(roomCode, recipientId, dice, moves, reqId),
+        serverMessage: mkError(
+          "BAD_TURN_STATE",
+          "When pending dice exist, getLegalMoves must specify exactly one die.",
+          reqId
+        ),
       };
     }
 
-    case "move": {
-      const rollerId = String(state.turn.nextActorId);
-      const actingId = String(state.actingActorId ?? rollerId);
+    const dieValue = dice[0];
+    const anyWithValue = state.pendingDice.some((pd) => pd.value === dieValue);
+    if (!anyWithValue) {
+      return {
+        nextState: state,
+        serverMessage: mkError("BAD_TURN_STATE", "Requested die is not available in pending dice.", reqId),
+      };
+    }
 
-      // Only the acting player can MOVE (may be teammate under team-play distribution).
-      if ((msg as any).actorId !== actingId) {
-        return {
-          nextState: state,
-          serverMessage: mkError(
-            "NOT_YOUR_TURN",
-            `Not your turn. Expected actorId=${actingId}.`,
-            reqId
-          ),
-        };
-      }
+    const match = state.pendingDice.find((pd) => pd.value === dieValue && pd.controllerId === actorId);
+    if (!match) {
+      const unassigned = state.pendingDice.find((pd) => pd.value === dieValue && pd.controllerId == null);
+      return {
+        nextState: state,
+        serverMessage: mkError(
+          "BAD_TURN_STATE",
+          unassigned
+            ? "Requested die is unassigned. The turn owner must assign it first."
+            : "You do not control the requested pending die.",
+          reqId
+        ),
+      };
+    }
 
-      const diceUsed = normalizeDice({ dice: (msg as any).dice });
-      if (!diceUsed) {
-        return {
-          nextState: state,
-          serverMessage: mkError("BAD_MESSAGE", "Invalid move dice.", reqId),
-        };
-      }
+    const moves = legalMoves(state.game as any, actorId as any, [dieValue] as any) as any[];
+    return {
+      nextState: state,
+      serverMessage: mkLegalMoves(roomCode, actorId, [dieValue], moves, reqId),
+    };
+  }
 
-      // ENFORCEMENT: When pendingDice exists, move must spend EXACTLY ONE die.
-      let remainingPendingDice: PendingDie[] = [];
-      if (Array.isArray(state.pendingDice) && state.pendingDice.length > 0) {
-        if (diceUsed.length !== 1) {
-          return {
-            nextState: state,
-            serverMessage: mkError(
-              "BAD_TURN_STATE",
-              "When pending dice exist, move must specify exactly one die.",
-              reqId
-            ),
-          };
+  // No pending dice: only the current turn owner may request moves.
+  if (actorId !== state.turn.nextActorId) {
+    return {
+      nextState: state,
+      serverMessage: mkError(
+        "NOT_YOUR_TURN",
+        `Not your turn. Expected actorId=${state.turn.nextActorId}.`,
+        reqId
+      ),
+    };
+  }
+
+  const moves = legalMoves(state.game as any, actorId as any, dice as any) as any[];
+  return {
+    nextState: state,
+    serverMessage: mkLegalMoves(roomCode, actorId, dice, moves, reqId),
+  };
+}
+
+
+case "move": {
+  const actorId = String((msg as any).actorId ?? "");
+  if (!actorId) {
+    return { nextState: state, serverMessage: mkError("BAD_MESSAGE", "Missing actorId.", reqId) };
+  }
+
+  const diceUsed = normalizeDice({ dice: (msg as any).dice });
+  if (!diceUsed) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_MESSAGE", "Invalid move dice.", reqId),
+    };
+  }
+
+  const rollerId = String(state.turn.nextActorId);
+
+  // When pendingDice exists, move must spend EXACTLY ONE die and ONLY the controller may spend it.
+  let remainingPendingDice: PendingDie[] = [];
+  let spentPendingDie: PendingDie | null = null;
+
+  if (Array.isArray(state.pendingDice) && state.pendingDice.length > 0) {
+    if (diceUsed.length !== 1) {
+      return {
+        nextState: state,
+        serverMessage: mkError(
+          "BAD_TURN_STATE",
+          "When pending dice exist, move must specify exactly one die.",
+          reqId
+        ),
+      };
+    }
+
+    const dieValue = diceUsed[0];
+    const idx = state.pendingDice.findIndex((pd) => pd.value === dieValue && pd.controllerId === actorId);
+    if (idx < 0) {
+      const anyWithValue = state.pendingDice.some((pd) => pd.value === dieValue);
+      const unassigned = state.pendingDice.some((pd) => pd.value === dieValue && pd.controllerId == null);
+      return {
+        nextState: state,
+        serverMessage: mkError(
+          "BAD_TURN_STATE",
+          !anyWithValue
+            ? "Move die is not available in pending dice."
+            : unassigned
+              ? "Move die is unassigned. The turn owner must assign it first."
+              : "You do not control the move die.",
+          reqId
+        ),
+      };
+    }
+
+    spentPendingDie = state.pendingDice[idx];
+    remainingPendingDice = state.pendingDice.slice();
+    remainingPendingDice.splice(idx, 1);
+  } else {
+    // No pending dice: only the current turn owner may move (legacy behavior).
+    if (actorId !== rollerId) {
+      return {
+        nextState: state,
+        serverMessage: mkError(
+          "NOT_YOUR_TURN",
+          `Not your turn. Expected actorId=${rollerId}.`,
+          reqId
+        ),
+      };
+    }
+  }
+
+  const response = tryApplyMoveWithResponse(
+    state.game as any,
+    actorId as any,
+    diceUsed as any,
+    (msg as any).move
+  );
+
+  if (response.ok) {
+    const nextGame: any = response.result.nextState as any;
+    const engineTurn = (response.result as any).turn ?? state.turn;
+
+    const teamPlayOn = nextGame?.config?.options?.teamPlay === true;
+    const killRollOn = nextGame?.config?.options?.killRoll === true;
+
+    // Banked extra dice are earned on ROLL (when dice show 1 or 6), not on MOVE spend.
+    // Therefore, the move step must not add to bank based on diceUsed.
+    const banked0 = Number.isInteger(state.bankedExtraDice) ? (state.bankedExtraDice as number) : 0;
+
+    // Kill-roll (glossary-aligned): any successful kill/capture banks +1 extra die (once per capturing move).
+    const captureCount =
+      (((response.result as any)?.replayEntry?.move?.captures?.length as number | undefined) ??
+        ((response.result as any)?.move?.captures?.length as number | undefined) ??
+        ((response.result as any)?.result?.move?.captures?.length as number | undefined) ??
+        ((response as any)?.result?.move?.captures?.length as number | undefined) ??
+        0) || 0;
+
+    const killRollEarned = killRollOn && captureCount > 0 ? 1 : 0;
+    const banked1 = banked0 + killRollEarned;
+
+    // If there are still pending dice remaining, normalize them:
+    // - Preserve per-die controllerId immutably while the controller still has legal moves.
+    // - If a controller no longer has legal moves for their die, unassign it (controllerId=null) IF some teammate can use it.
+    // - Forfeit a die only when NO ONE on the team has legal moves for that die.
+    if (Array.isArray(state.pendingDice) && state.pendingDice.length > 0 && remainingPendingDice.length > 0) {
+      const normalized: PendingDie[] = [];
+      for (const pd of remainingPendingDice) {
+        const anyTeamMove = teamPlayOn ? hasAnyLegalMoveForTeam(nextGame as any, rollerId, pd.value) : hasLegalMoveForPlayer(nextGame as any, rollerId, pd.value);
+        if (!anyTeamMove) {
+          // forfeit this die
+          continue;
         }
 
-        const sub = subtractPendingDice(state.pendingDice, diceUsed);
-        if (!sub.ok) {
-          return {
-            nextState: state,
-            serverMessage: mkError(
-              "BAD_TURN_STATE",
-              "Move die is not available in pending dice.",
-              reqId
-            ),
-          };
-        }
-        remainingPendingDice = sub.remaining;
-      }
-
-      const response = tryApplyMoveWithResponse(
-        state.game as any,
-        (msg as any).actorId as any,
-        diceUsed as any,
-        (msg as any).move
-      );
-
-      if (response.ok) {
-        const nextGame: any = response.result.nextState as any;
-        const engineTurn = (response.result as any).turn ?? state.turn;
-
-        const teamPlayOn = nextGame?.config?.options?.teamPlay === true;
-        const killRollOn = nextGame?.config?.options?.killRoll === true;        // Banked extra dice are earned on ROLL (when dice show 1 or 6), not on MOVE spend.
-        // Therefore, the move step must not add to bank based on diceUsed.
-        const banked0 =
-          Number.isInteger(state.bankedExtraDice) ? (state.bankedExtraDice as number) :
-          0;
-
-        // Kill-roll (glossary-aligned): any successful kill/capture (sending an opponent peg to base) banks +1 extra die.
-        // (Not +1 per capture; tests assert +1 total per capturing move.)
-        const captureCount =
-          (((response.result as any)?.replayEntry?.move?.captures?.length as number | undefined) ??
-            ((response.result as any)?.move?.captures?.length as number | undefined) ??
-            ((response.result as any)?.result?.move?.captures?.length as number | undefined) ??
-            ((response as any)?.result?.move?.captures?.length as number | undefined) ??
-            0) ||
-          0;
-        const killRollEarned = killRollOn && captureCount > 0 ? 1 : 0;
-
-        const banked1 = banked0 + killRollEarned;
-
-        const delegated = state.actingActorId && state.actingActorId !== rollerId;
-
-        // If there are still pending dice remaining, check whether any are resolvable.
-        if (
-          Array.isArray(state.pendingDice) &&
-          state.pendingDice.length > 0 &&
-          remainingPendingDice.length > 0
-        ) {
-          const hasAnyLegalMove = remainingPendingDice.some((pd) => {
-            const lm = legalMoves(nextGame as any, rollerId as any, [pd.value] as any) as any[];
-            return Array.isArray(lm) && lm.length > 0;
-          });
-
-          if (hasAnyLegalMove) {
-            const nextTurn: TurnInfo = {
-              ...engineTurn,
-              nextActorId: rollerId, // keep control with the roller while resolving dice
-              awaitingDice: false,
-            };
-
-            const nextState: SessionState = {
-              game: nextGame,
-              turn: nextTurn,
-              pendingDice: setPendingControllers(remainingPendingDice, rollerId),
-              actingActorId: undefined, // next resolution may be delegated again
-              bankedExtraDice: banked1,
-            };
-
-            (response as any).turn = { ...nextTurn, pendingDice: setPendingControllers(remainingPendingDice, rollerId) } as any;
-            (response.result as any).turn = (response as any).turn;
-
-            return {
-              nextState,
-              serverMessage: mkMoveResult(roomCode, response, reqId),
-            };
+        if (teamPlayOn && pd.controllerId != null) {
+          const controllerHas = hasLegalMoveForPlayer(nextGame as any, String(pd.controllerId), pd.value);
+          if (!controllerHas) {
+            // unassign to allow the turn owner to re-delegate to an eligible teammate
+            normalized.push({ ...pd, controllerId: null });
+            continue;
           }
-
-          // Otherwise, remaining dice exist but have no legal moves; exhaust them.
-          remainingPendingDice = [];
         }
 
+        normalized.push(pd);
+      }
 
-        // Otherwise, dice resolution is complete (either no pendingDice existed, or it is now empty).
-        // Decide who rolls next:
-        let nextActorId = engineTurn.nextActorId;
-        if (typeof nextActorId !== "string") nextActorId = rollerId;
-
-        // If teammate acted for roller, return control to roller.
-        if (delegated) {
-          nextActorId = rollerId;
-        }
-
-        // Team play finisher keeps the turn (continue rolling/distributing).
-        const actorFinished = nextGame?.players?.[(msg as any).actorId]?.hasFinished === true;
-        if (teamPlayOn && actorFinished) {
-          nextActorId = (msg as any).actorId;
-        }
-
-        // Apply banked extra-dice rule:
-        // If any extra dice are banked, the roller keeps the turn to roll again.
-        // (The bank is consumed when the roll is taken.)
-        if (banked1 > 0) {
-          nextActorId = rollerId;
-        } else {
-          // No banked extra: if engine suggests same actor, advance to next actor.
-          if (nextActorId === rollerId) {
-            nextActorId = computeNextActorId(nextGame, rollerId);
-          }
-        }
-
+      if (normalized.length > 0) {
         const nextTurn: TurnInfo = {
           ...engineTurn,
-          nextActorId,
-          awaitingDice: true,
+          nextActorId: rollerId, // keep control with the roller while resolving dice
+          awaitingDice: false,
         };
 
         const nextState: SessionState = {
           game: nextGame,
           turn: nextTurn,
-          pendingDice: undefined,
+          pendingDice: normalized,
           actingActorId: undefined,
           bankedExtraDice: banked1,
         };
 
-        (response as any).turn = { ...nextTurn, pendingDice: undefined } as any;
-          (response.result as any).turn = (response as any).turn;
-
+        (response as any).turn = { ...nextTurn, pendingDice: normalized } as any;
+        (response.result as any).turn = (response as any).turn;
 
         return {
           nextState,
@@ -546,13 +695,63 @@ const rollerId = String(state.turn.nextActorId);
         };
       }
 
-      return {
-        nextState: state,
-        serverMessage: mkMoveResult(roomCode, response, reqId),
-      };
+      // All remaining dice were forfeited.
+      remainingPendingDice = [];
     }
 
-    default:
+    // Dice resolution is complete (either no pendingDice existed, or it is now empty).
+    // Decide who rolls next:
+    let nextActorId = engineTurn.nextActorId;
+    if (typeof nextActorId !== "string") nextActorId = rollerId;
+
+    // Team play finisher keeps the turn (continue rolling/distributing).
+    const actorFinished = nextGame?.players?.[actorId]?.hasFinished === true;
+    if (teamPlayOn && actorFinished) {
+      nextActorId = actorId;
+    }
+
+    // Apply banked extra-dice rule:
+    // If any extra dice are banked, the roller keeps the turn to roll again.
+    // (The bank is consumed when the roll is taken.)
+    if (banked1 > 0) {
+      nextActorId = rollerId;
+    } else {
+      // No banked extra: if engine suggests same actor, advance to next actor.
+      if (nextActorId === rollerId) {
+        nextActorId = computeNextActorId(nextGame, rollerId);
+      }
+    }
+
+    const nextTurn: TurnInfo = {
+      ...engineTurn,
+      nextActorId,
+      awaitingDice: true,
+    };
+
+    const nextState: SessionState = {
+      game: nextGame,
+      turn: nextTurn,
+      pendingDice: undefined,
+      actingActorId: undefined,
+      bankedExtraDice: banked1,
+    };
+
+    (response as any).turn = { ...nextTurn, pendingDice: undefined } as any;
+    (response.result as any).turn = (response as any).turn;
+
+    return {
+      nextState,
+      serverMessage: mkMoveResult(roomCode, response, reqId),
+    };
+  }
+
+  return {
+    nextState: state,
+    serverMessage: mkMoveResult(roomCode, response, reqId),
+  };
+}
+
+default:
       return {
         nextState: state,
         serverMessage: mkError("BAD_MESSAGE", "Unhandled message type.", reqId),

@@ -17,7 +17,8 @@ export type ClientMessage =
   | StartGameMessage
   | RollMessage
   | GetLegalMovesMessage
-  | MoveMessage;
+  | MoveMessage
+  | AssignPendingDieMessage;
 
 export interface HelloMessage {
   type: "hello";
@@ -101,6 +102,21 @@ export interface MoveMessage {
   actorId: PlayerId;
   dice: number[];
   move: any;
+  reqId?: string;
+}
+
+
+export interface AssignPendingDieMessage {
+  /**
+   * Team-play delegation: assign control of a specific pending die (by index) to a teammate
+   * who has at least one legal move for that die.
+   *
+   * Only the current turn owner may assign.
+   */
+  type: "assignPendingDie";
+  actorId: PlayerId; // turn owner
+  dieIndex: number; // index into server-authoritative turn.pendingDice / session.pendingDice
+  controllerId: PlayerId;
   reqId?: string;
 }
 
