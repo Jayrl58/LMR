@@ -14,17 +14,21 @@ Ref (Version Channel):
 stable
 
 Global Docs (paths):
-- /stable/Working_Preferences_Generalized.md
-- /stable/Command_Glossary.md
-- /stable/AI_Collaboration_Lifecycle.md
-- /stable/AI_Collaboration_AAR_Log.md
+- /Working_Preferences_Generalized.md
+- /Command_Glossary.md
+- /AI_Collaboration_Lifecycle.md
+- /AI_Collaboration_AAR_Log.md
 
 ---
 
-## Project Docs (This Repo)
+## Project Docs — LMR (Public)
 
-Milestone Frame:
-- ./Startup_Milestone_Frame.md
+Project Base Raw URL:
+https://raw.githubusercontent.com/Jayrl58/LMR
 
-Project Startup Document:
-- (TODO) Add a project-specific startup doc path here when created.
+Project Ref:
+main
+
+Project Docs (paths):
+- /Startup_Milestone_Frame.md
+- /LMR_Project_Startup.md
