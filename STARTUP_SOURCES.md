@@ -27,7 +27,7 @@ Project Base Raw URL:
 https://raw.githubusercontent.com/Jayrl58/LMR
 
 Project Ref:
-main
+master
 
 Project Docs (paths):
 - /Startup_Milestone_Frame.md
