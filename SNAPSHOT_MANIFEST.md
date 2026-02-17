@@ -1,3 +1,19 @@
+v3.2 — Phase 5 Continuity Lock — 2026-02-17
+
+Scope:
+- Per-die delegation (explicit assignment model)
+- Guardrail: assignment requires legal moves
+- Delegation immutability enforced
+- Stale/concurrent arbitration enforced
+- Updated teamPlay delegation tests
+- 126/126 tests passing
+
+Status:
+M1 ✓
+M2 ✓
+M3 ✓
+M4 →
+M5 ○
 Snapshot Version: v3.1  
 Snapshot Date: 2026-02-13  
 Snapshot Type: Engine Invariant Layer + Repository Stabilization
