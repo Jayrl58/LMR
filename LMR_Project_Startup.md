@@ -3,7 +3,8 @@
 Purpose:
 Provide authoritative context for Startup Protocol execution.
 
-This document defines the current milestone state, active focus, and scope boundaries.
+This document defines the current milestone state, active focus, scope boundaries,
+and the project-specific continuity procedure.
 
 ---
 
@@ -86,5 +87,36 @@ Strengthen audit checks so:
 
 ## Immediate Logical Next Step
 
-Formalize team-shape validation matrix inside `validateState`  
+Formalize team-shape validation matrix inside `validateState`
 so all 4/6/8 configurations are explicitly enforced.
+
+---
+
+# Project Continuity Procedure (Authoritative)
+
+Name:
+LMR Restart-Complete Snapshot Procedure
+
+Scope:
+This procedure defines artifact-level continuity for LMR.
+
+Invocation Rule:
+- This procedure may ONLY execute inside
+  Global Continuity Lock → Step 4 (Snapshot Evaluation),
+  when a structural snapshot trigger is confirmed.
+- It must NOT execute directly when the user types
+  "Continuity Lock".
+- Global 5-step structure always wraps this procedure.
+
+Core Actions:
+
+1) Confirm milestone state is locked.
+2) Update SNAPSHOT_MANIFEST.md if structural change occurred.
+3) Update README_RESUME.md to reflect current restart state.
+4) Create Restart-Complete snapshot package (zip).
+5) Exclude node_modules and ephemeral artifacts.
+6) Store snapshot in designated location.
+7) Confirm working tree is clean before exit.
+
+This procedure is project-specific and does not override
+the global Continuity Lock structure.
