@@ -128,3 +128,60 @@ Core Actions:
 
 This procedure is project-specific and does not override the global
 Continuity Lock structure.
+
+------------------------------------------------------------------------
+
+# Gated Startup & Continuity Execution Model (Authoritative)
+
+This project executes Startup and Continuity Lock as explicit gated
+sequences.
+
+The assistant must NOT auto-run multi-step flows. Each step requires
+explicit Yes/No confirmation before proceeding.
+
+------------------------------------------------------------------------
+
+## Gated Startup Sequence
+
+When user invokes startup:
+
+Step 1 --- Confirm source binding - Display loaded document registry. -
+Gate: "Proceed to Step 2 --- Display milestone frame? (Yes/No)"
+
+Step 2 --- Milestone Display - Render Startup_Milestone_Frame.md
+verbatim inside a fenced code block. - No interpretation or
+restructuring. - Gate: "Proceed to Step 3 --- Generate session
+assessment + options? (Yes/No)"
+
+Step 3 --- Session Planning - Provide concise current-state assessment
+(1--3 lines). - Provide 1--5 next-step options. - Provide 1--2 pros/cons
+per option. - Provide single recommendation. - Await session goal
+selection.
+
+No additional narrative. No automatic advancement between steps.
+
+------------------------------------------------------------------------
+
+## Gated Continuity Lock Sequence
+
+When user invokes "Continuity Lock":
+
+Step 1 --- Milestone Reconciliation - Display milestone frame (fenced
+code block). - Gate: "Proceed to Step 2 --- Structural check? (Yes/No)"
+
+Step 2 --- Structural Document Check - Assistant lists structural
+signals. - User confirms document updates if required. - Gate: "Proceed
+to Step 3 --- Repository check? (Yes/No)"
+
+Step 3 --- Repository Integrity - Request git status. - Ensure working
+tree clean. - Gate: "Proceed to Step 4 --- Snapshot evaluation?
+(Yes/No)"
+
+Step 4 --- Snapshot Evaluation - Determine if structural snapshot
+required. - If yes, execute LMR Restart-Complete Snapshot Procedure. -
+Gate: "Proceed to Step 5 --- AAR? (Yes/No)"
+
+Step 5 --- AAR - Prompt AI collaboration AAR. - Project AAR only on
+explicit invocation.
+
+No step skipping. No narrative substitution.
