@@ -7,6 +7,13 @@ export type RoomCode = string;
  * Client → Server messages
  * ========================= */
 
+
+export type ForfeitPendingDieMessage = {
+  type: "forfeitPendingDie";
+  actorId: PlayerId;
+  dieIndex: number;
+};
+
 export type ClientMessage =
   | HelloMessage
   | JoinRoomMessage
@@ -18,7 +25,7 @@ export type ClientMessage =
   | RollMessage
   | GetLegalMovesMessage
   | MoveMessage
-  | AssignPendingDieMessage;
+  | AssignPendingDieMessage | ForfeitPendingDieMessage;
 
 export interface HelloMessage {
   type: "hello";
@@ -106,7 +113,7 @@ export interface MoveMessage {
 }
 
 
-export interface AssignPendingDieMessage {
+export interface AssignPendingDieMessage | ForfeitPendingDieMessage {
   /**
    * Team-play delegation: assign control of a specific pending die (by index) to a teammate
    * who has at least one legal move for that die.

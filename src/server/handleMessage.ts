@@ -227,7 +227,7 @@ export function handleClientMessage(
 
   // Guard: gameplay is forbidden once the game is ended (Rematch flow).
   if (state.game.phase === "ended") {
-    if (msg.type === "roll" || msg.type === "getLegalMoves" || msg.type === "move" || msg.type === "assignPendingDie") {
+    if (msg.type === "roll" || msg.type === "getLegalMoves" || msg.type === "move" || msg.type === "assignPendingDie" || msg.type === "forfeitPendingDie") {
       return {
         nextState: state,
         serverMessage: mkError("ENDED_GAME", "Game is over. Waiting for rematch/new game.", reqId),
@@ -417,7 +417,6 @@ case "assignPendingDie": {
     };
   }
 
-
   // Delegation is only allowed when the turn owner has finished all pegs.
   const rollerFinished = state.game?.players?.[rollerId]?.hasFinished === true;
   if (!rollerFinished) {
@@ -498,6 +497,101 @@ case "assignPendingDie": {
 }
 
     
+
+
+case "forfeitPendingDie": {
+  const actorId = String((msg as any).actorId ?? "");
+  if (!actorId) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_MESSAGE", "Missing actorId for forfeitPendingDie.", reqId),
+    };
+  }
+
+  // Forfeit is a turn-owner-only acknowledgment gate for dead dice.
+  if (actorId !== rollerId) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_TURN_STATE", "Only the turn owner may forfeit pending dice.", reqId),
+    };
+  }
+
+  if (!Array.isArray(state.pendingDice) || state.pendingDice.length === 0) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_TURN_STATE", "No pending dice to forfeit.", reqId),
+    };
+  }
+
+  const dieIndex = Number((msg as any).dieIndex);
+  if (!Number.isInteger(dieIndex) || dieIndex < 0 || dieIndex >= state.pendingDice.length) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_MESSAGE", "Invalid dieIndex for forfeitPendingDie.", reqId),
+    };
+  }
+
+  const game = state.game as any;
+  const teamPlayOn = game?.config?.options?.teamPlay === true;
+  const rollerFinished = game?.players?.[rollerId]?.hasFinished === true;
+
+  // In normal play, only the turn owner resolves dice.
+  // In team play finisher delegation mode, a die is "live" if ANY teammate (excluding the finished owner) can move it.
+  const resolvers =
+    teamPlayOn && rollerFinished ? getTeamMembers(game, rollerId).filter((pid) => pid !== rollerId) : [rollerId];
+
+  function dieIsLive(value: number): boolean {
+    return (resolvers.length > 0 ? resolvers : [rollerId]).some((pid) =>
+      hasLegalMoveForPlayer(game, String(pid), value)
+    );
+  }
+
+  // Forfeit is only allowed when NO pending die is live (i.e., team is stuck).
+  const anyLive = state.pendingDice.some((pd) => dieIsLive(pd.value));
+  if (anyLive) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_TURN_STATE", "Cannot forfeit while any pending die has legal moves.", reqId),
+    };
+  }
+
+  // Fixed order (FIFO / lowest index) when stuck.
+  if (dieIndex !== 0) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_TURN_STATE", "Must forfeit pending dice in order (FIFO).", reqId),
+    };
+  }
+
+  const target = state.pendingDice[dieIndex];
+  if (dieIsLive(target.value)) {
+    return {
+      nextState: state,
+      serverMessage: mkError("BAD_TURN_STATE", "Die is not dead and cannot be forfeited.", reqId),
+    };
+  }
+
+  const nextPending = state.pendingDice.slice();
+  nextPending.splice(dieIndex, 1);
+
+  const nextTurn = {
+    ...state.turn,
+    awaitingDice: nextPending.length === 0,
+  } as any;
+
+  const nextState: SessionState = {
+    ...(state as any),
+    turn: nextTurn,
+    pendingDice: nextPending.length > 0 ? nextPending : undefined,
+  } as any;
+
+  return {
+    nextState,
+    serverMessage: mkStateSync(roomCode, nextState, reqId),
+  };
+}
+
+
 case "getLegalMoves": {
   const actorId = String((msg as any).actorId ?? "");
   if (!actorId) {
@@ -606,38 +700,6 @@ case "move": {
           reqId
         ),
       };
-    }
-
-
-    const teamPlayOn = state.game?.config?.options?.teamPlay === true;
-
-    // Sequential delegation (team play):
-    // If any pending die is assigned, ONLY that controller may act and ONLY that die may be spent.
-    if (teamPlayOn) {
-      const active = state.pendingDice.find((pd) => pd.controllerId != null);
-      if (active) {
-        if (String(active.controllerId) !== actorId) {
-          return {
-            nextState: state,
-            serverMessage: mkError(
-              "BAD_TURN_STATE",
-              "A delegated die is active; only its controller may act.",
-              reqId
-            ),
-          };
-        }
-        // Actor is the controller; they must spend the active die value.
-        if (diceUsed[0] !== active.value) {
-          return {
-            nextState: state,
-            serverMessage: mkError(
-              "BAD_TURN_STATE",
-              "You must resolve the active delegated die before spending any other pending die.",
-              reqId
-            ),
-          };
-        }
-      }
     }
 
     const dieValue = diceUsed[0];
