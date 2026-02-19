@@ -417,6 +417,33 @@ case "assignPendingDie": {
     };
   }
 
+
+  // Delegation is only allowed when the turn owner has finished all pegs.
+  const rollerFinished = state.game?.players?.[rollerId]?.hasFinished === true;
+  if (!rollerFinished) {
+    return {
+      nextState: state,
+      serverMessage: mkError(
+        "BAD_TURN_STATE",
+        "assignPendingDie is only valid when the turn owner has finished all pegs.",
+        reqId
+      ),
+    };
+  }
+
+  // Sequential delegation: only one delegated die may be active at a time.
+  const anyAssigned = state.pendingDice.some((pd) => pd.controllerId != null);
+  if (anyAssigned) {
+    return {
+      nextState: state,
+      serverMessage: mkError(
+        "BAD_TURN_STATE",
+        "A delegated die is already active; resolve it before assigning another.",
+        reqId
+      ),
+    };
+  }
+
   const dieIndex = Number((msg as any).dieIndex);
   if (!Number.isInteger(dieIndex) || dieIndex < 0 || dieIndex >= state.pendingDice.length) {
     return {
@@ -579,6 +606,38 @@ case "move": {
           reqId
         ),
       };
+    }
+
+
+    const teamPlayOn = state.game?.config?.options?.teamPlay === true;
+
+    // Sequential delegation (team play):
+    // If any pending die is assigned, ONLY that controller may act and ONLY that die may be spent.
+    if (teamPlayOn) {
+      const active = state.pendingDice.find((pd) => pd.controllerId != null);
+      if (active) {
+        if (String(active.controllerId) !== actorId) {
+          return {
+            nextState: state,
+            serverMessage: mkError(
+              "BAD_TURN_STATE",
+              "A delegated die is active; only its controller may act.",
+              reqId
+            ),
+          };
+        }
+        // Actor is the controller; they must spend the active die value.
+        if (diceUsed[0] !== active.value) {
+          return {
+            nextState: state,
+            serverMessage: mkError(
+              "BAD_TURN_STATE",
+              "You must resolve the active delegated die before spending any other pending die.",
+              reqId
+            ),
+          };
+        }
+      }
     }
 
     const dieValue = diceUsed[0];

@@ -385,50 +385,240 @@ it("legality can become valid later in the same turn: after resolving 1 to enter
 
   // NOTE: Covered by enforced tests above (auto-pass timing, FIFO, and per-die forfeiture visibility).
 
-  it("team play (Phase 5 contract): per-die delegation authority is enforced (skipped until controllerId-per-die is implemented)", () => {
+  it("team play (Phase 5 contract): per-die delegation authority is enforced", () => {
     /**
-     * Contract intent (locked requirements):
-     * - Team Play enabled.
-     * - Turn owner rolls multiple dice.
-     * - Turn owner delegates per die (A->teammate A, B->teammate B).
-     * - Only each die's controller may select/apply that die.
-     * - Turn owner still receives server-authored legal-move previews for all dice.
-     * - Banked extras always credit to turn owner (activeActorId), regardless of resolver.
-     *
-     * Current status: per-die delegation protocol is not yet implemented in the server.
-     * This test is intentionally skipped to keep GREEN until the feature lands.
+     * Locked requirements (team play):
+     * - Delegation is only valid when the turn owner has finished all pegs.
+     * - Pending dice start unassigned; turn owner must assign a die before it can be spent.
+     * - Only the assigned controller may request moves and spend that die.
+     * - Turn owner cannot bypass assignment (cannot spend unassigned dice; cannot spend delegated dice).
      */
-    expect(true).toBe(true);
+    const p0 = P("p0"); // turn owner
+    const p1 = P("p1"); // teammate (receiver/controller)
+
+    // Build a 2-player team game (4 players total, 2 teams of 2).
+    const game: any = makeState({ playerCount: 4 } as any);
+    game.config = game.config ?? { options: {} };
+    game.config.options = { ...(game.config.options ?? {}), teamPlay: true };
+
+    // Place p0 and p1 on same team; p0 is finished (delegation enabled).
+    game.players = game.players ?? {};
+    game.players[p0] = { ...(game.players[p0] ?? {}), teamId: "T0", hasFinished: true };
+    game.players[p1] = { ...(game.players[p1] ?? {}), teamId: "T0" };
+
+    const session0: SessionState = {
+      game,
+      turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
+      actingActorId: undefined,
+      pendingDice: undefined,
+      bankedExtraDice: 0,
+    } as any;
+
+    // Roll a 1 (receiver should be able to enter from base in most starts).
+    const r1 = handleClientMessage(session0, { type: "roll", actorId: p0, dice: [1] } as any);
+    expect((r1.serverMessage as any).type).toBe("stateSync");
+    expect(Array.isArray((r1.nextState as any).pendingDice)).toBe(true);
+    expect(((r1.nextState as any).pendingDice ?? [])[0]?.controllerId).toBeNull();
+
+    // Turn owner assigns the pending die to p1 (receiver).
+    const r2 = handleClientMessage(r1.nextState as any, {
+      type: "assignPendingDie",
+      actorId: p0,
+      dieIndex: 0,
+      controllerId: p1,
+    } as any);
+    expect((r2.serverMessage as any).type).toBe("stateSync");
+    expect(((r2.nextState as any).pendingDice ?? [])[0]?.controllerId).toBe(p1);
+
+    // Turn owner cannot request legal moves for the delegated die.
+    const r3 = handleClientMessage(r2.nextState as any, { type: "getLegalMoves", actorId: p0, dice: [1] } as any);
+    expect((r3.serverMessage as any).type).toBe("error");
+    expect(((r3.serverMessage as any).message ?? "").toString().toLowerCase()).toContain("do not control");
+
+    // Receiver CAN request legal moves for the delegated die.
+    const r4 = handleClientMessage(r2.nextState as any, { type: "getLegalMoves", actorId: p1, dice: [1] } as any);
+    expect((r4.serverMessage as any).type).toBe("legalMoves");
+    const lm: any = r4.serverMessage as any;
+    expect(Array.isArray(lm.moves)).toBe(true);
+    expect(lm.moves.length).toBeGreaterThan(0);
+
+    // Turn owner cannot bypass assignment by attempting to spend the delegated die.
+    const r5 = handleClientMessage(r2.nextState as any, {
+      type: "move",
+      actorId: p0,
+      dice: [1],
+      move: lm.moves[0],
+    } as any);
+    expect((r5.serverMessage as any).type).toBe("error");
+    const msg5 = (((r5.serverMessage as any).message ?? "") as any).toString().toLowerCase();
+    expect(msg5.includes("do not control") || msg5.includes("delegated die is active")).toBe(true);
+
+    // Receiver spends the die using an actual legal move.
+    const r6 = handleClientMessage(r2.nextState as any, {
+      type: "move",
+      actorId: p1,
+      dice: [1],
+      move: lm.moves[0],
+    } as any);
+    expect((r6.serverMessage as any).type).toBe("moveResult");
+    expect(((r6.serverMessage as any).response ?? {}).ok).toBe(true);
+
+    // After spending, pendingDice should be cleared.
+    expect((r6.nextState as any).pendingDice == null || (r6.nextState as any).pendingDice.length === 0).toBe(true);
   });
 
-  it("team play (Phase 5 contract): delegation immutability until resolution (skipped until controllerId-per-die is implemented)", () => {
+  it("team play (Phase 5 contract): delegation is only allowed when the turn owner has finished all pegs", () => {
     /**
-     * Contract intent (locked requirements):
-     * - Team Play enabled.
-     * - Turn owner delegates a specific die to teammate A.
-     * - Turn owner cannot reassign that die's controllerId until the die resolves.
-     * - Teammate A resolves the die (move or auto-pass if all unresolved are illegal).
-     * - After resolution, the die is no longer actionable.
-     *
-     * Current status: per-die delegation protocol is not yet implemented in the server.
-     * This test is intentionally skipped to keep GREEN until the feature lands.
+     * Locked requirement (team play):
+     * - assignPendingDie is only valid when the turn owner has finished all pegs.
      */
-    expect(true).toBe(true);
+    const p0 = P("p0"); // turn owner
+    const p1 = P("p1"); // teammate receiver/controller
+
+    const game: any = makeState({ playerCount: 4 } as any);
+    game.config = game.config ?? { options: {} };
+    game.config.options = { ...(game.config.options ?? {}), teamPlay: true };
+
+    // Same team, but turn owner is NOT finished.
+    game.players = game.players ?? {};
+    game.players[p0] = { ...(game.players[p0] ?? {}), teamId: "T0", hasFinished: false };
+    game.players[p1] = { ...(game.players[p1] ?? {}), teamId: "T0" };
+
+    const session0: SessionState = {
+      game,
+      turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
+      actingActorId: undefined,
+      pendingDice: undefined,
+      bankedExtraDice: 0,
+    } as any;
+
+    // Roll creates pending dice (unassigned).
+    const r1 = handleClientMessage(session0, { type: "roll", actorId: p0, dice: [1] } as any);
+    expect((r1.serverMessage as any).type).toBe("stateSync");
+    expect(((r1.nextState as any).pendingDice ?? [])[0]?.controllerId).toBeNull();
+
+    // Delegation attempt must be rejected because p0 is not finished.
+    const r2 = handleClientMessage(r1.nextState as any, {
+      type: "assignPendingDie",
+      actorId: p0,
+      dieIndex: 0,
+      controllerId: p1,
+    } as any);
+
+    expect((r2.serverMessage as any).type).toBe("error");
+    const msg = (((r2.serverMessage as any).message ?? "") as any).toString().toLowerCase();
+    expect(msg).toContain("finished");
+    expect(msg).toContain("pegs");
   });
 
 
-  it("team play (Phase 5 contract): stale/concurrent input arbitration (first valid wins; second rejected as stale) (skipped until per-die delegation + stale error are implemented)", () => {
+  it("team play (Phase 5 contract): delegation is sequential (single active delegated die) and immutable by choice", () => {
     /**
-     * Contract intent (locked requirements):
-     * - Team Play enabled.
-     * - Turn owner delegates two different dice: dieA->teammateA, dieB->teammateB.
-     * - TeammateA submits a valid resolve/move for dieA.
-     * - TeammateB submits a resolve/move based on the pre-move state (arrives second after state advanced).
-     * - Server accepts the first valid action; rejects the second as stale/state-advanced.
-     *
-     * Current status: per-die delegation protocol and explicit stale error contract are not yet implemented.
-     * This test is intentionally skipped to keep GREEN until the feature lands.
+     * Locked requirements (team play, sequential delegation):
+     * - Turn owner chooses which pending die to delegate next.
+     * - While a delegated die is active, no other pending die may be assigned or spent.
      */
-    expect(true).toBe(true);
+    const p0 = P("p0"); // turn owner
+    const p1 = P("p1"); // teammate receiver/controller
+
+    const game: any = makeState({ playerCount: 4 } as any);
+    game.config = game.config ?? { options: {} };
+    game.config.options = { ...(game.config.options ?? {}), teamPlay: true };
+
+    game.players = game.players ?? {};
+    game.players[p0] = { ...(game.players[p0] ?? {}), teamId: "T0", hasFinished: true };
+    game.players[p1] = { ...(game.players[p1] ?? {}), teamId: "T0" };
+
+    const session0: SessionState = {
+      game,
+      turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
+      actingActorId: undefined,
+      pendingDice: undefined,
+      bankedExtraDice: 0,
+    } as any;
+
+    // Roll two dice so there are two pending dice.
+    const r1 = handleClientMessage(session0, { type: "roll", actorId: p0, dice: [1, 1] } as any);
+    expect((r1.serverMessage as any).type).toBe("stateSync");
+    expect((r1.nextState as any).pendingDice.length).toBe(2);
+
+    // Assign the first die to p1.
+    const r2 = handleClientMessage(r1.nextState as any, {
+      type: "assignPendingDie",
+      actorId: p0,
+      dieIndex: 0,
+      controllerId: p1,
+    } as any);
+    expect((r2.serverMessage as any).type).toBe("stateSync");
+
+    // Attempt to assign the second die while an active delegated die exists must fail.
+    const r3 = handleClientMessage(r2.nextState as any, {
+      type: "assignPendingDie",
+      actorId: p0,
+      dieIndex: 1,
+      controllerId: p1,
+    } as any);
+    expect((r3.serverMessage as any).type).toBe("error");
+    expect(((r3.serverMessage as any).message ?? "").toString().toLowerCase()).toContain("already active");
+
+    // Receiver resolves the active delegated die next.
+    const r4 = handleClientMessage(r2.nextState as any, { type: "getLegalMoves", actorId: p1, dice: [1] } as any);
+    expect((r4.serverMessage as any).type).toBe("legalMoves");
+    const lm: any = r4.serverMessage as any;
+
+    const r5 = handleClientMessage(r2.nextState as any, {
+      type: "move",
+      actorId: p1,
+      dice: [1],
+      move: lm.moves[0],
+    } as any);
+    expect((r5.serverMessage as any).type).toBe("moveResult");
+    expect(((r5.serverMessage as any).response ?? {}).ok).toBe(true);
+  });
+
+  it("team play (Phase 5 contract): stale/concurrent input arbitration under sequential delegation (non-controller rejected)", () => {
+    /**
+     * Locked requirements (team play, sequential delegation):
+     * - After delegation, only the delegated controller may act until that die resolves.
+     * - Any concurrent attempt by a non-controller is rejected deterministically without state mutation.
+     */
+    const p0 = P("p0"); // turn owner
+    const p1 = P("p1"); // controller/receiver
+    const p2 = P("p2"); // non-controller
+
+    const game: any = makeState({ playerCount: 4 } as any);
+    game.config = game.config ?? { options: {} };
+    game.config.options = { ...(game.config.options ?? {}), teamPlay: true };
+
+    game.players = game.players ?? {};
+    game.players[p0] = { ...(game.players[p0] ?? {}), teamId: "T0", hasFinished: true };
+    game.players[p1] = { ...(game.players[p1] ?? {}), teamId: "T0" };
+    game.players[p2] = { ...(game.players[p2] ?? {}), teamId: "T1" };
+
+    const session0: SessionState = {
+      game,
+      turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
+      actingActorId: undefined,
+      pendingDice: undefined,
+      bankedExtraDice: 0,
+    } as any;
+
+    const r1 = handleClientMessage(session0, { type: "roll", actorId: p0, dice: [1] } as any);
+    expect((r1.serverMessage as any).type).toBe("stateSync");
+
+    const r2 = handleClientMessage(r1.nextState as any, {
+      type: "assignPendingDie",
+      actorId: p0,
+      dieIndex: 0,
+      controllerId: p1,
+    } as any);
+    expect((r2.serverMessage as any).type).toBe("stateSync");
+
+    // Concurrent/non-controller attempt to get moves is rejected.
+    const r3 = handleClientMessage(r2.nextState as any, { type: "getLegalMoves", actorId: p2, dice: [1] } as any);
+    expect((r3.serverMessage as any).type).toBe("error");
+
+    // State must not mutate on rejection (pending still exists and is still controlled by p1).
+    expect(((r3.nextState as any).pendingDice ?? [])[0]?.controllerId).toBe(p1);
   });
 });
