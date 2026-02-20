@@ -1,181 +1,90 @@
-# LMR Rules Anchor v1.7.6
+# LMR Rules Anchor
 
-## Purpose
-
-This document anchors interpretation of the **LMR Rules Authority**.
-Where wording, implementation, or interpretation conflicts arise, this
-anchor defines the intended meaning and precedence.
-
-This document supersedes **LMR Rules Anchor v1.7.5**.
+## Version 1.7.6
 
 ------------------------------------------------------------------------
 
-## Authoritative Sources (Order of Precedence)
+# 9. Pre-Game Options (Locked at Game Start)
 
-1.  **LMR_Rules_Authority_v1.7.6.md** (highest authority)
-2.  Rules Anchor (this document)
-3.  Engine implementation
-4.  UI behavior
-5.  Tests and scenarios
+The following options may be enabled before the game begins and remain
+locked for the duration of the game:
 
-Engine, UI, and tests must conform to the Rules Authority as interpreted
-here.
-
-------------------------------------------------------------------------
-
-## Terminology Locks
-
-### Extra Dice (Canonical)
-
--   **Extra Dice** is the only valid term for dice earned from
-    qualifying events.
--   Terms such as *Extra Rolls* are forbidden.
--   Extra Dice represent owed dice, not permissions or actions.
-
-### Banked Dice (Canonical)
-
--   **Banked Dice** are owed dice that must be rolled.
--   A **Bank Roll** consists of rolling exactly N dice when N Banked
-    Dice exist.
--   A Bank Roll consumes the entire bank (N → 0).
--   Any newly earned Banked Dice from that roll are added afterward.
--   Rolling Banked Dice one-at-a-time is incorrect.
-
-### Active Die
-
--   An **Active Die** is a designation applied to exactly one Pending
-    Die.
--   Active status does not force a move or forfeiture.
--   Active Die designation may change freely among Pending Dice.
-
-### Rematch (Canonical)
-
--   **Rematch** is the canonical term for a subsequent game created by
-    unanimous consent after a completed game.
--   "Subsequent Game" is an internal descriptive term only and must not
-    appear in player-facing UI text.
--   A Rematch implies:
-    -   identical players (roster)
-    -   identical seats
-    -   identical teams
-    -   carried-forward options (unless changed per Rules Authority)
+-   Team Play\
+-   Double Dice\
+-   Kill Rolls\
+-   Fast Track
 
 ------------------------------------------------------------------------
 
-## Dice Lifecycle Interpretation
+## 9.1 Team Play (Optional)
 
-Dice exist in the following conceptual states:
+If enabled, players are assigned to equally sized teams.
 
-Rolled Dice → Pending Dice → Active Die → Resolved
+Victory Condition: - A team wins when all members of that team have
+finished all Pegs.
 
-Interpretation rules:
+Teammate Interaction: - A Peg may legally Kill a teammate's Peg.\
+- Killing a teammate's Peg does not grant a Banked Die.\
+- If killing a teammate is the only Legal Move for a Die, that move must
+be taken.
 
--   Pending Dice must be resolved one at a time.
--   Exactly one Active Die may exist at any moment.
--   Lifecycle states are descriptive, not imperative.
--   Turn blocking is based on state, not required actions.
-
-------------------------------------------------------------------------
-
-## Team Play --- Interpretive Locks
-
-### Turn Ownership
-
--   Turn order continues normally under Team Play.
--   A finished player remains in the turn rotation and still rolls on
-    their turn.
-
-### Delegation Eligibility (State-Based)
-
--   Delegation is permitted whenever the turn owner has Finished all of
-    their Pegs.
--   If the turn owner becomes Finished mid-turn while Pending Dice
-    remain, delegation becomes permitted for the remaining Pending Dice.
--   If the turn owner has any Peg not Finished, delegation is
-    prohibited.
-
-### Delegation Resolution Model
-
--   Delegation is sequential.
--   Only one Pending Die may be assigned and resolved at a time.
--   No simultaneous multi-die assignment is permitted.
+Delegation: - When a turn owner has finished all Pegs, Pending Dice are
+delegated to eligible teammates. - Dice are delegated one at a time. - A
+Dead Die is forfeited only when no Pending Dice have Legal Moves.
 
 ------------------------------------------------------------------------
 
-## Auto-Pass Clarification
+## 9.2 Double Dice (Optional)
 
--   A Dead Die is a Pending Die that currently has no Legal Move.
--   Auto-Pass resolves Pending Dice that have no Legal Moves.
--   Auto-Pass never bypasses Banked Dice.
--   If Banked Dice remain after Auto-Pass, the turn does not advance.
--   Only when no Pending Dice and no Banked Dice remain may the turn
-    advance.
+If enabled, two Dice are rolled at the start of each Turn.
 
-------------------------------------------------------------------------
+-   Each Die becomes a Pending Die.\
+-   Dice are resolved one at a time.\
+-   Dead Dice are not forfeited while another Pending Die has a Legal
+    Move.\
+-   Auto-Pass forfeits remaining Pending Dice when none have Legal
+    Moves.
 
-## Turn Advancement Invariant (Interpretive)
+Banked Dice Interaction: - Rolling a 1 grants exactly one Banked Die.\
+- Rolling a 6 grants exactly one Banked Die.\
+- If Kill Rolls are enabled, each qualifying capturing Move grants
+exactly one Banked Die.\
+- Double Dice does not multiply Banked Dice awards.
 
-A turn may not advance while:
-
--   A die is Active, or
--   Pending Dice remain, or
--   Banked Dice remain to be rolled.
-
-This invariant is state-based and does not force any particular action.
-
-------------------------------------------------------------------------
-
-## Engine / UI Contract Guidance
-
--   The engine represents the Active Die implicitly (selected die).
--   Under Team Play, Pending Dice begin unassigned when delegation is
-    permitted.
--   UI may allow re-selection of Active Die without resolving it.
--   Tests asserting dice lifecycle behavior must follow the above
-    interpretations.
+Bank Rolls: - The number of Dice rolled in a Bank Roll must equal the
+number of Banked Dice.
 
 ------------------------------------------------------------------------
 
-## Game End vs Rematch Boundary (Interpretive)
+## 9.3 Kill Rolls (Optional)
 
--   A completed game enters an ENDED_GAME state where all gameplay
-    actions are rejected.
--   The ended game remains frozen for result inspection until a new
-    transition occurs.
--   A Rematch is a new game instance, not a continuation of the prior
-    game.
--   Gameplay state is cleared at the Rematch boundary, not at game end.
--   The starting player for a Rematch is derived once from the prior
-    game's frozen results during the Rematch transition.
+If enabled, a player banks exactly one Banked Die for each Move that
+captures one opponent Peg.
 
-------------------------------------------------------------------------
+Qualifying Move: - A Move in which a Peg lands on an opponent's Peg and
+sends it to Base under standard Kill rules. - A Move can capture only
+one Peg. - A Move that captures an opponent's Peg grants exactly one
+Banked Die. - A Move that captures a teammate's Peg grants no Banked
+Die. - A Move that captures no Peg grants no Banked Die.
 
-## Endgame Results Period (Interpretive)
-
--   After a game reaches a terminal state, the room enters an Endgame
-    Results period.
--   Specific duration and behavior are defined in the Rules Authority.
--   If a Rematch is unanimously approved during the Endgame Results
-    period, the Rematch transition occurs.
--   If the period expires or a Rematch fails, the room transitions to
-    PRE_GAME.
--   Endgame transitions do not imply player removal.
+Banked Dice earned from capturing Moves accumulate during the Turn and
+follow standard Banked Die and Bank Roll rules.
 
 ------------------------------------------------------------------------
 
-## Change Log
+## 9.4 Fast Track (Optional)
 
-### v1.7.6
+If enabled: - Each player begins the game with one Peg on H3. - That Peg
+is immediately Finished. - That Peg may not move and may not be
+Killed. - Remaining Pegs begin in Base.
 
--   Updated precedence to Rules Authority v1.7.6.
--   Replaced "Banked Extra Dice" terminology with "Banked Dice / Bank
-    Roll".
--   Clarified delegation eligibility as state-based (including mid-turn
-    finishing).
--   Locked sequential delegation model.
+Fast Track alters only initial placement and does not modify other
+rules.
 
-### v1.7.5
+------------------------------------------------------------------------
 
--   Anchored "Rematch" terminology.
--   Clarified ENDED_GAME vs Rematch boundary.
--   Anchored Endgame Results period behavior.
+# Anchor Alignment Note
+
+This Anchor mirrors Rules Authority v1.7.6, including the move-based
+Kill Roll formalization (one Banked Die per capturing Move; teammate
+exclusion retained).

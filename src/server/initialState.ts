@@ -1,16 +1,29 @@
-import type { GameState } from "../types";
+import { GameState } from "../types";
+import { makeState, TeamMode } from "../engine/makeState";
 
 /**
- * Minimal production-safe initial state factory.
- * Replace/extend later as you add lobby/game creation flows.
+ * Production + dev initializer.
+ * Uses real engine state construction.
+ *
+ * Environment variables (optional):
+ * - PLAYER_COUNT: number (handled by caller)
+ * - TEAM_PLAY: "true" | "false"
+ * - TEAM_MODE: "2x2" | "2x3" | "3x2" | "2x4" | "4x2"
+ * - DOUBLE_DICE: "true" | "false"
+ * - FAST_TRACK: "true" | "false"
  */
 export function createInitialState(playerCount: number): GameState {
-  // For now, rely on the engine's existing state shape defaults.
-  // This assumes your GameState type can be constructed via object literals
-  // or you already have an internal initializer elsewhere.
-  //
-  // If you already have an engine initializer (preferred), wire it here.
-  throw new Error(
-    "createInitialState is not implemented yet. Wire this to your engine initializer."
-  );
+  const teamPlay = process.env.TEAM_PLAY === "true";
+  const teamMode = (process.env.TEAM_MODE as TeamMode | undefined) ?? undefined;
+  const doubleDice = process.env.DOUBLE_DICE === "true";
+  const fastTrack = process.env.FAST_TRACK === "true";
+
+  return makeState({
+    // makeState expects a narrow union type; env is dynamic, so cast is required here.
+    playerCount: playerCount as any,
+    teamPlay,
+    teamMode,
+    doubleDice,
+    fastTrack,
+  });
 }

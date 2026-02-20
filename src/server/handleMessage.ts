@@ -756,11 +756,14 @@ case "move": {
     // Therefore, the move step must not add to bank based on diceUsed.
     const banked0 = Number.isInteger(state.bankedDice) ? (state.bankedDice as number) : 0;
 
-    // Kill-roll (glossary-aligned): any successful kill/capture banks +1 extra die (once per capturing move).
+    // Kill-roll (glossary-aligned): a capturing MOVE (one peg moved for one die) banks exactly +1 extra die.
+// Note: a Move is expected to have at most one capture; we treat any non-empty captures list as one earned die.
     const captureCount =
       (((response.result as any)?.replayEntry?.move?.captures?.length as number | undefined) ??
+        ((response.result as any)?.replayEntry?.result?.move?.captures?.length as number | undefined) ??
         ((response.result as any)?.move?.captures?.length as number | undefined) ??
         ((response.result as any)?.result?.move?.captures?.length as number | undefined) ??
+        ((response.result as any)?.result?.replayEntry?.move?.captures?.length as number | undefined) ??
         ((response as any)?.result?.move?.captures?.length as number | undefined) ??
         0) || 0;
 

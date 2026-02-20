@@ -85,8 +85,8 @@ export function validateState(state: GameState): void {
       throw new Error("validateState: duplicate player detected across teams");
     }
 
-    // Validate allowed team shapes (current scope: 2 teams only)
-    const teamSizes = (teams as string[][]).map(t => t.length).sort((a, b) => a - b);
+    // Validate allowed team shapes (scope: 2–4 teams, constrained by playerCount)
+    const teamSizes = (teams as string[][]).map((t) => t.length).sort((a, b) => a - b);
 
     const isValid4 =
       playerCount === 4 &&
@@ -94,17 +94,28 @@ export function validateState(state: GameState): void {
       teamSizes[0] === 2 &&
       teamSizes[1] === 2;
 
+    // 6P team play supports:
+    // - 2 teams of 3 (2x3)
+    // - 3 teams of 2 (3x2)
     const isValid6 =
       playerCount === 6 &&
-      teamSizes.length === 2 &&
-      teamSizes[0] === 3 &&
-      teamSizes[1] === 3;
+      ((teamSizes.length === 2 && teamSizes[0] === 3 && teamSizes[1] === 3) ||
+        (teamSizes.length === 3 &&
+          teamSizes[0] === 2 &&
+          teamSizes[1] === 2 &&
+          teamSizes[2] === 2));
 
+    // 8P team play supports:
+    // - 2 teams of 4 (2x4)
+    // - 4 teams of 2 (4x2)
     const isValid8 =
       playerCount === 8 &&
-      teamSizes.length === 2 &&
-      teamSizes[0] === 4 &&
-      teamSizes[1] === 4;
+      ((teamSizes.length === 2 && teamSizes[0] === 4 && teamSizes[1] === 4) ||
+        (teamSizes.length === 4 &&
+          teamSizes[0] === 2 &&
+          teamSizes[1] === 2 &&
+          teamSizes[2] === 2 &&
+          teamSizes[3] === 2));
 
     if (!(isValid4 || isValid6 || isValid8)) {
       throw new Error("validateState: invalid team configuration for player count");

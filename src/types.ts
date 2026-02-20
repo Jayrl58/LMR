@@ -127,6 +127,9 @@ export interface GameState {
       // Optional: kill-roll mode. If true, rolling a 6 allows "kill" moves.
       killRoll?: boolean;
 
+      // Fast Track: each player starts with one peg already finished in home.
+      fastTrack?: boolean;
+
       // Team play (explicit up to 4 teams)
       teamPlay?: boolean;
       teams?: readonly TeamConfig[];
