@@ -30,11 +30,11 @@ export type SessionState = {
    * Banked extra dice earned earlier in the Turn (e.g. from rolling 1/6, or optional kill-roll).
    * These dice are owed to the roller and must be rolled only after all pendingDice are resolved.
    */
-  bankedExtraDice?: number;
+  bankedDice?: number;
 
   /**
    * Legacy inbound-only alias for older tests/clients.
-   * Transitional rule: accept on input if bankedExtraDice is absent, but never emit.
+   * Transitional rule: accept on input if bankedDice is absent, but never emit.
    */
 };
 
@@ -53,12 +53,12 @@ function mkError(code: any, message: string, reqId?: string): ServerMessage {
 }
 
 function mkStateSync(roomCode: string, s: SessionState, reqId?: string): ServerMessage {
-  // TurnInfo is intentionally minimal in protocol.ts; we attach extra fields (pendingDice, bankedExtraDice)
+  // TurnInfo is intentionally minimal in protocol.ts; we attach extra fields (pendingDice, bankedDice)
   // as a runtime-compatible extension used by tests and debug UIs.
   const turnForMsg: any = { ...s.turn };
   if (Array.isArray(s.pendingDice)) turnForMsg.pendingDice = s.pendingDice;
-  if (typeof (s as any).bankedExtraDice === "number" && (s as any).bankedExtraDice > 0) {
-    turnForMsg.bankedExtraDice = (s as any).bankedExtraDice;
+  if (typeof (s as any).bankedDice === "number" && (s as any).bankedDice > 0) {
+    turnForMsg.bankedDice = (s as any).bankedDice;
   }
 
   return withReqId(
@@ -270,8 +270,8 @@ case "roll": {
     };
   }
 
-  // Transitional normalization: canonical bankedExtraDice; accept legacy inbound-only bank.
-  const banked0 = Number.isInteger(state.bankedExtraDice) ? (state.bankedExtraDice as number) : 0;
+  // Transitional normalization: canonical bankedDice; accept legacy inbound-only bank.
+  const banked0 = Number.isInteger(state.bankedDice) ? (state.bankedDice as number) : 0;
 
   // v1.7.4 banked cashout: if N banked extra dice exist, the next roll must consist of exactly N dice.
   if (banked0 > 0 && dice.length !== banked0) {
@@ -313,7 +313,7 @@ case "roll": {
         turn: nextTurn,
         pendingDice: undefined,
         actingActorId: undefined,
-        bankedExtraDice: bankedAfter,
+        bankedDice: bankedAfter,
       };
 
       return {
@@ -329,7 +329,7 @@ case "roll": {
       turn: nextTurn,
       pendingDice: dice.map((v) => ({ value: v, controllerId: null })),
       actingActorId: undefined,
-      bankedExtraDice: bankedAfter,
+      bankedDice: bankedAfter,
     };
 
     return {
@@ -356,7 +356,7 @@ case "roll": {
       turn: nextTurn,
       pendingDice: undefined,
       actingActorId: undefined,
-      bankedExtraDice: bankedAfter,
+      bankedDice: bankedAfter,
     };
 
     return {
@@ -372,12 +372,12 @@ case "roll": {
     turn: nextTurn,
     pendingDice: dice.map((v) => ({ value: v, controllerId: rollerId })),
     actingActorId: rollerId,
-    bankedExtraDice: bankedAfter,
+    bankedDice: bankedAfter,
   };
 
   const turnForMsg: any = { ...nextTurn };
   if (typeof bankedAfter === "number" && bankedAfter > 0) {
-    turnForMsg.bankedExtraDice = bankedAfter;
+    turnForMsg.bankedDice = bankedAfter;
   }
 
   return {
@@ -754,7 +754,7 @@ case "move": {
 
     // Banked extra dice are earned on ROLL (when dice show 1 or 6), not on MOVE spend.
     // Therefore, the move step must not add to bank based on diceUsed.
-    const banked0 = Number.isInteger(state.bankedExtraDice) ? (state.bankedExtraDice as number) : 0;
+    const banked0 = Number.isInteger(state.bankedDice) ? (state.bankedDice as number) : 0;
 
     // Kill-roll (glossary-aligned): any successful kill/capture banks +1 extra die (once per capturing move).
     const captureCount =
@@ -804,7 +804,7 @@ case "move": {
           turn: nextTurn,
           pendingDice: normalized,
           actingActorId: undefined,
-          bankedExtraDice: banked1,
+          bankedDice: banked1,
         };
 
         (response as any).turn = { ...nextTurn, pendingDice: normalized } as any;
@@ -854,7 +854,7 @@ case "move": {
       turn: nextTurn,
       pendingDice: undefined,
       actingActorId: undefined,
-      bankedExtraDice: banked1,
+      bankedDice: banked1,
     };
 
     (response as any).turn = { ...nextTurn, pendingDice: undefined } as any;

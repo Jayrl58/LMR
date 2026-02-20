@@ -24,7 +24,7 @@ describe("server: teamPlay finisher keeps turn + can delegate subsequent rolls",
       turn: { nextActorId: p0, awaitingDice: true } as any,
       pendingDice: undefined,
       actingActorId: undefined,
-      bankedExtraDice: 0,
+      bankedDice: 0,
     };
 
     // Roll 1: returns stateSync with unassigned pending dice
@@ -73,7 +73,7 @@ describe("server: teamPlay finisher keeps turn + can delegate subsequent rolls",
     // Subsequent roll can be delegated again (reset to p0 awaitingDice for this test)
     const session3: SessionState = {
       ...r2.nextState,
-      bankedExtraDice: 0,
+      bankedDice: 0,
       bankedExtraRolls: undefined as any,
       turn: { ...r2.nextState.turn, nextActorId: p0, awaitingDice: true } as any,
       pendingDice: undefined,

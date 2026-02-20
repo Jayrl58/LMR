@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { handleClientMessage, type SessionState } from "../src/server/handleMessage";
 import { makeState, P } from "./helpers";
 
-describe("bankedExtraDice turn ownership", () => {
+describe("bankedDice turn ownership", () => {
   it("Invariant K3: when the final banked die is consumed (and no pendingDice remain), the turn advances", () => {
     const p0 = P("p0");
     const p1 = P("p1");
@@ -18,7 +18,7 @@ describe("bankedExtraDice turn ownership", () => {
       turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
       pendingDice: undefined,
       actingActorId: undefined,
-      bankedExtraDice: 1,
+      bankedDice: 1,
     };
 
     // Use a die value that typically has NO legal moves from the initial state (e.g., 4),
@@ -29,7 +29,7 @@ describe("bankedExtraDice turn ownership", () => {
     expect(res.serverMessage.type).toBe("stateSync");
 
     // Bank decrements by exactly 1 (1 -> 0).
-    expect(res.nextState.bankedExtraDice).toBe(0);
+    expect(res.nextState.bankedDice).toBe(0);
 
     // With bank empty and no pending dice, turn should advance.
     expect(res.nextState.turn.nextActorId).toBe(p1);

@@ -34,7 +34,7 @@ function makeState(opts: { killRoll: boolean; banked: number }) {
       pendingDice: undefined,
     },
     // Top-level bank store that handleMessage reads/writes.
-    bankedExtraDice: opts.banked,
+    bankedDice: opts.banked,
     bankedExtraRolls: opts.banked,
     pendingDice: undefined,
   } as any;
@@ -75,7 +75,7 @@ describe("kill-roll banking semantics (server-only, engine mocked)", () => {
     expect((res.serverMessage as any)?.response?.ok).toBe(true);
 
     // No banking when killRoll is off.
-    expect(res.nextState.bankedExtraDice ?? res.nextState.bankedExtraRolls).toBe(0);
+    expect(res.nextState.bankedDice ?? res.nextState.bankedExtraRolls).toBe(0);
   });
 
   it("Invariant L2: killRoll=true capture banks exactly +1 extra die", () => {
@@ -97,6 +97,6 @@ describe("kill-roll banking semantics (server-only, engine mocked)", () => {
     expect((res.serverMessage as any)?.response?.ok).toBe(true);
 
     // Exactly +1 for the capturing move.
-    expect(res.nextState.bankedExtraDice ?? res.nextState.bankedExtraRolls).toBe(1);
+    expect(res.nextState.bankedDice ?? res.nextState.bankedExtraRolls).toBe(1);
   });
 });

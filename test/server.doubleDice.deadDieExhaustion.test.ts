@@ -25,7 +25,7 @@ describe("doubleDice dead pending die exhaustion", () => {
         turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
         pendingDice: undefined,
         actingActorId: undefined,
-        bankedExtraDice: 0,
+        bankedDice: 0,
       };
 
       // Roll two dice: 2 then 5.
@@ -60,7 +60,7 @@ describe("doubleDice dead pending die exhaustion", () => {
       turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
       pendingDice: undefined,
       actingActorId: undefined,
-      bankedExtraDice: 0,
+      bankedDice: 0,
     };
 
     const r1 = handleClientMessage(session0, { type: "roll", actorId: p0, dice: [2, 5] } as any);

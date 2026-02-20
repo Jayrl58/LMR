@@ -183,7 +183,7 @@ describe("Phase 5 contract targets: pending dice + auto-pass timing (server)", (
       turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
       actingActorId: undefined,
       pendingDice: undefined,
-      bankedExtraDice: 0,
+      bankedDice: 0,
     } as any;
 
     const r1 = handleClientMessage(session0, { type: "roll", actorId: p0, dice: [1, 5] } as any);
@@ -208,7 +208,7 @@ describe("Phase 5 contract targets: pending dice + auto-pass timing (server)", (
       turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
       actingActorId: undefined,
       pendingDice: undefined,
-      bankedExtraDice: 0,
+      bankedDice: 0,
     } as any;
 
     // Roll 1 + 5 at game start: 1 is playable (enter), 5 is temporarily illegal until after entry.
@@ -258,7 +258,7 @@ it("legality can become valid later in the same turn: after resolving 1 to enter
     turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
     actingActorId: undefined,
     pendingDice: undefined,
-    bankedExtraDice: 0,
+    bankedDice: 0,
   } as any;
 
   // Roll 1 + 5. At start, 1 is playable (enter); 5 is initially illegal.
@@ -331,7 +331,7 @@ it("legality can become valid later in the same turn: after resolving 1 to enter
       turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
       actingActorId: undefined,
       pendingDice: undefined,
-      bankedExtraDice: 0,
+      bankedDice: 0,
     } as any;
 
     const r1 = handleClientMessage(session0, { type: "roll", actorId: p0, dice: [2, 3] } as any);
@@ -411,7 +411,7 @@ it("legality can become valid later in the same turn: after resolving 1 to enter
       turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
       actingActorId: undefined,
       pendingDice: undefined,
-      bankedExtraDice: 0,
+      bankedDice: 0,
     } as any;
 
     // Roll a 1 (receiver should be able to enter from base in most starts).
@@ -489,7 +489,7 @@ it("legality can become valid later in the same turn: after resolving 1 to enter
       turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
       actingActorId: undefined,
       pendingDice: undefined,
-      bankedExtraDice: 0,
+      bankedDice: 0,
     } as any;
 
     // Roll creates pending dice (unassigned).
@@ -534,7 +534,7 @@ it("legality can become valid later in the same turn: after resolving 1 to enter
       turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
       actingActorId: undefined,
       pendingDice: undefined,
-      bankedExtraDice: 0,
+      bankedDice: 0,
     } as any;
 
     // Roll two dice so there are two pending dice.
@@ -600,7 +600,7 @@ it("legality can become valid later in the same turn: after resolving 1 to enter
       turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
       actingActorId: undefined,
       pendingDice: undefined,
-      bankedExtraDice: 0,
+      bankedDice: 0,
     } as any;
 
     const r1 = handleClientMessage(session0, { type: "roll", actorId: p0, dice: [1] } as any);

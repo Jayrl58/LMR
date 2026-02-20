@@ -7,7 +7,7 @@
 //    (and always clear stale moves immediately after a move).
 // 2) Start button is always visible (it is no longer hidden when auto-ready is enabled).
 // 3) Ready controls are always visible; when auto-ready is ON they are disabled (greyed out), when auto-ready is OFF they are enabled.
-// 4) bankedExtraDice: console now reads canonical `bankedExtraDice` and enforces the cashout roll size (N banked => roll exactly N dice).
+// 4) bankedDice: console now reads canonical `bankedDice` and enforces the cashout roll size (N banked => roll exactly N dice).
 // 5) Server-authoritative dice: pending dice are taken from server messages (legalMoves / moveResult.nextState) and local optimistic state is unwound on errors.
 //
 // Notes:
@@ -424,7 +424,7 @@ function html(): string {
         <div>doubleDice (server)</div><div id="doubleDice">(unknown)</div>
         <div>doubleDice (effective)</div><div id="doubleDiceEff">(unknown)</div>
         <div>pendingDice (UI)</div><div id="pendingDiceUI">(none)</div>
-        <div>bankedExtraDice</div><div id="bankedExtraDice">(unknown)</div>
+        <div>bankedDice</div><div id="bankedDice">(unknown)</div>
         <div>eligibleToRoll</div><div id="eligibleToRoll">(unknown)</div>
         <div>eligibleToResolve</div><div id="eligibleToResolve">(unknown)</div>
       </div>
@@ -516,7 +516,7 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
   const doubleDiceEl = document.getElementById("doubleDice");
   const doubleDiceEffEl = document.getElementById("doubleDiceEff");
   const pendingDiceUIEl = document.getElementById("pendingDiceUI");
-  const bankedExtraEl = document.getElementById("bankedExtraDice");
+  const bankedDiceEl = document.getElementById("bankedDice");
   const eligibleToRollEl = document.getElementById("eligibleToRoll");
   const eligibleToResolveEl = document.getElementById("eligibleToResolve");
 
@@ -557,10 +557,10 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
   let turnNextActorId = null;
   let turnAwaitingDice = null;
   let optDoubleDiceServer = null;
-  let bankedExtraDice = null;
-  // If we had to infer bank count from a BAD_ROLL error, keep it until server explicitly provides bankedExtraDice.
-  let bankedExtraDiceLocked = false;
-  let bankedExtraDiceLockValue = null;
+  let bankedDice = null;
+  // If we had to infer bank count from a BAD_ROLL error, keep it until server explicitly provides bankedDice.
+  let bankedDiceLocked = false;
+  let bankedDiceLockValue = null;
 
   // Auto-fetch moves when selecting a pending die
   let autoFetch = true;
@@ -621,7 +621,7 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
 
   function dicePerRoll(){
     // v1.7.4 bank cashout: if N banked extra dice exist, the next roll must consist of exactly N dice.
-    if (typeof bankedExtraDice === "number" && Number.isFinite(bankedExtraDice) && bankedExtraDice > 0) return bankedExtraDice;
+    if (typeof bankedDice === "number" && Number.isFinite(bankedDice) && bankedDice > 0) return bankedDice;
     return effectiveDoubleDice() ? 2 : 1;
   }
 
@@ -779,39 +779,39 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
 
     if (typeof dd === "boolean") optDoubleDiceServer = dd;
 
-    // Canonical: SessionState.bankedExtraDice (number).
-    // Note: legalMoves attaches turn.bankedExtraDice ONLY when >0.
-    // If msg.turn exists on a legalMoves message but lacks bankedExtraDice, interpret that as 0.
+    // Canonical: SessionState.bankedDice (number).
+    // Note: legalMoves attaches turn.bankedDice ONLY when >0.
+    // If msg.turn exists on a legalMoves message but lacks bankedDice, interpret that as 0.
     let b =
       // Prefer explicit bank count provided on moveResult response.turn (and related turn objects).
-      deepGet(msg, ["response","turn","bankedExtraDice"]) ??
-      deepGet(msg, ["response","result","turn","bankedExtraDice"]) ??
-      deepGet(msg, ["response","result","nextState","bankedExtraDice"]) ??
-      msg?.bankedExtraDice ??
-      msg?.state?.bankedExtraDice ??
-      msg?.game?.bankedExtraDice ??
-      msg?.turn?.bankedExtraDice ??
+      deepGet(msg, ["response","turn","bankedDice"]) ??
+      deepGet(msg, ["response","result","turn","bankedDice"]) ??
+      deepGet(msg, ["response","result","nextState","bankedDice"]) ??
+      msg?.bankedDice ??
+      msg?.state?.bankedDice ??
+      msg?.game?.bankedDice ??
+      msg?.turn?.bankedDice ??
       undefined;
 
     if (typeof b === "number" && Number.isFinite(b)) {
       // If we inferred a required bank count from BAD_ROLL, do not allow it to "drift downward"
       // unless the server clearly indicates the bank has been consumed/reset.
-      if (bankedExtraDiceLocked && typeof bankedExtraDiceLockValue === "number") {
+      if (bankedDiceLocked && typeof bankedDiceLockValue === "number") {
         if (b === 0) {
-          bankedExtraDice = 0;
-          bankedExtraDiceLocked = false;
-          bankedExtraDiceLockValue = null;
-        } else if (b >= bankedExtraDiceLockValue) {
-          bankedExtraDice = b;
+          bankedDice = 0;
+          bankedDiceLocked = false;
+          bankedDiceLockValue = null;
+        } else if (b >= bankedDiceLockValue) {
+          bankedDice = b;
           // keep lock until we see consumption, but update lock value to the latest explicit value
-          bankedExtraDiceLockValue = b;
+          bankedDiceLockValue = b;
         } else {
           // Ignore contradictory smaller explicit values while locked.
         }
       } else {
-        bankedExtraDice = b;
-        bankedExtraDiceLocked = false;
-        bankedExtraDiceLockValue = null;
+        bankedDice = b;
+        bankedDiceLocked = false;
+        bankedDiceLockValue = null;
       }
     }
 
@@ -835,7 +835,7 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
       ? JSON.stringify(pendingDiceUI)
       : "(none)";
 
-    bankedExtraEl.textContent = (bankedExtraDice === null || bankedExtraDice === undefined) ? "(unknown)" : String(bankedExtraDice);
+    bankedDiceEl.textContent = (bankedDice === null || bankedDice === undefined) ? "(unknown)" : String(bankedDice);
 
     const eligibleToRoll = (turnAwaitingDice === true) && (!pendingDiceUI || pendingDiceUI.length === 0);
     const eligibleToResolve = Array.isArray(pendingDiceUI) && pendingDiceUI.length > 0;
@@ -994,12 +994,12 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
           const required = m1 ? Number(m1[1]) : null;
           const bank = m2 ? Number(m2[1]) : null;
 
-          if (Number.isFinite(bank)) bankedExtraDice = bank;
-          else if (Number.isFinite(required)) bankedExtraDice = required;
+          if (Number.isFinite(bank)) bankedDice = bank;
+          else if (Number.isFinite(required)) bankedDice = required;
 
-          if (typeof bankedExtraDice === "number" && Number.isFinite(bankedExtraDice)) {
-            bankedExtraDiceLocked = true;
-            bankedExtraDiceLockValue = bankedExtraDice;
+          if (typeof bankedDice === "number" && Number.isFinite(bankedDice)) {
+            bankedDiceLocked = true;
+            bankedDiceLockValue = bankedDice;
           }
 
           // Also reset roll slots to the now-required count.
@@ -1013,7 +1013,7 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
         moveIndexEl.value = "";
         renderPendingDiceList();
 
-        // Roll slot count (and roll eligibility text) may depend on bankedExtraDice.
+        // Roll slot count (and roll eligibility text) may depend on bankedDice.
         renderRollDiceList();
       }
 
@@ -1117,13 +1117,13 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
 
       // If we inferred a required bank cashout size from BAD_ROLL, clear the bank lock
       // when we observe the post-cashout roll arrive (pending dice count equals the required count and we are now resolving).
-      if (bankedExtraDiceLocked && typeof bankedExtraDiceLockValue === "number" && Array.isArray(msg.dice)){
+      if (bankedDiceLocked && typeof bankedDiceLockValue === "number" && Array.isArray(msg.dice)){
         const incomingLen = msg.dice.length;
         const nowResolving = (turnAwaitingDice === false);
-        if (nowResolving && incomingLen === bankedExtraDiceLockValue && incomingLen > 0){
-          bankedExtraDice = 0;
-          bankedExtraDiceLocked = false;
-          bankedExtraDiceLockValue = null;
+        if (nowResolving && incomingLen === bankedDiceLockValue && incomingLen > 0){
+          bankedDice = 0;
+          bankedDiceLocked = false;
+          bankedDiceLockValue = null;
           resetRollSlots();
         }
       }

@@ -12,7 +12,7 @@ describe("moveResult turn consistency", () => {
       turn: { nextActorId: pid, dicePolicy: "external", awaitingDice: true } as any,
       pendingDice: undefined,
       actingActorId: undefined,
-      bankedExtraDice: 0,
+      bankedDice: 0,
     };
 
     // Roll two dice explicitly (double-dice context)
