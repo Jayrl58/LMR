@@ -767,7 +767,23 @@ case "move": {
       throw new Error("INVARIANT_VIOLATION: a single move cannot capture more than one peg");
     }
 
-    const killRollEarned = killRollOn && captures.length > 0 ? 1 : 0;
+    let killRollEarned = 0;
+    if (killRollOn && captures.length > 0) {
+      const cap: any = captures[0];
+      const victimId =
+        (cap?.victimPlayerId as unknown) ??
+        (cap?.victim as unknown) ??
+        (cap?.victimId as unknown) ??
+        (cap?.playerId as unknown);
+
+      if (typeof victimId !== "string") {
+        throw new Error("INVARIANT_VIOLATION: capture missing victim player id");
+      }
+
+      // Kill-roll banks only when capturing an OPPONENT peg (not a teammate peg).
+      const teammateCaptured = teamPlayOn && isSameTeam(nextGame as any, rollerId, victimId);
+      killRollEarned = teammateCaptured ? 0 : 1;
+    }
     const banked1 = banked0 + killRollEarned;
 
     // If there are still pending dice remaining, normalize them:
