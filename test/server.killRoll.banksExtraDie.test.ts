@@ -49,6 +49,32 @@ function makeMoveMsg() {
   } as any;
 }
 
+function mkEngineOkWithOneCapture(stateGame: any) {
+  const captures = [{ victimPlayerId: "p1", victimPegIndex: 0 }];
+
+  return {
+    ok: true,
+    result: {
+      ok: true,
+
+      // Canonical capture evidence path (strict server invariant):
+      // response.result.replayEntry.move.captures must be a present array.
+      replayEntry: {
+        move: {
+          // A single move can have at most one capture; keep it length=1.
+          captures,
+        },
+      },
+
+      // Legacy/extra fields may still be present; they are not relied upon by strict kill-roll banking.
+      move: { captures },
+
+      turn: { nextActorId: "p1", awaitingDice: true },
+      nextState: stateGame,
+    },
+  };
+}
+
 beforeEach(() => {
   tryApplyMoveWithResponseMock.mockReset();
 });
@@ -58,15 +84,7 @@ describe("kill-roll banking semantics (server-only, engine mocked)", () => {
     const state = makeState({ killRoll: false, banked: 0 });
 
     // Engine says: ok move, and it captured exactly one opponent peg.
-    tryApplyMoveWithResponseMock.mockReturnValueOnce({
-      ok: true,
-      result: {
-        ok: true,
-        move: { captures: [{ victim: "p1", pegId: 0 }] },
-        turn: { nextActorId: "p1", awaitingDice: true },
-        nextState: state.game,
-      },
-    });
+    tryApplyMoveWithResponseMock.mockReturnValueOnce(mkEngineOkWithOneCapture(state.game));
 
     const res = handleClientMessage(state, makeMoveMsg());
 
@@ -81,15 +99,7 @@ describe("kill-roll banking semantics (server-only, engine mocked)", () => {
   it("Invariant L2: killRoll=true capture banks exactly +1 extra die", () => {
     const state = makeState({ killRoll: true, banked: 0 });
 
-    tryApplyMoveWithResponseMock.mockReturnValueOnce({
-      ok: true,
-      result: {
-        ok: true,
-        move: { captures: [{ victim: "p1", pegId: 0 }] },
-        turn: { nextActorId: "p1", awaitingDice: true },
-        nextState: state.game,
-      },
-    });
+    tryApplyMoveWithResponseMock.mockReturnValueOnce(mkEngineOkWithOneCapture(state.game));
 
     const res = handleClientMessage(state, makeMoveMsg());
 

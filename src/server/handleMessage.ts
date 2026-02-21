@@ -757,17 +757,17 @@ case "move": {
     const banked0 = Number.isInteger(state.bankedDice) ? (state.bankedDice as number) : 0;
 
     // Kill-roll (glossary-aligned): a capturing MOVE (one peg moved for one die) banks exactly +1 extra die.
-// Note: a Move is expected to have at most one capture; we treat any non-empty captures list as one earned die.
-    const captureCount =
-      (((response.result as any)?.replayEntry?.move?.captures?.length as number | undefined) ??
-        ((response.result as any)?.replayEntry?.result?.move?.captures?.length as number | undefined) ??
-        ((response.result as any)?.move?.captures?.length as number | undefined) ??
-        ((response.result as any)?.result?.move?.captures?.length as number | undefined) ??
-        ((response.result as any)?.result?.replayEntry?.move?.captures?.length as number | undefined) ??
-        ((response as any)?.result?.move?.captures?.length as number | undefined) ??
-        0) || 0;
+// Note: a Move is expected to have at most one capture; we enforce that invariant here and compute earned dice from the canonical path:
+//   response.result.replayEntry.move.captures
+    const captures = (response as any)?.result?.replayEntry?.move?.captures;
+    if (!Array.isArray(captures)) {
+      throw new Error("INVARIANT_VIOLATION: moveResult missing canonical replayEntry.move.captures array");
+    }
+    if (captures.length > 1) {
+      throw new Error("INVARIANT_VIOLATION: a single move cannot capture more than one peg");
+    }
 
-    const killRollEarned = killRollOn && captureCount > 0 ? 1 : 0;
+    const killRollEarned = killRollOn && captures.length > 0 ? 1 : 0;
     const banked1 = banked0 + killRollEarned;
 
     // If there are still pending dice remaining, normalize them:
