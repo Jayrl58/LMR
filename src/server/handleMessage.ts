@@ -508,7 +508,10 @@ case "forfeitPendingDie": {
     };
   }
 
-  // Forfeit is a turn-owner-only acknowledgment gate for dead dice.
+  // One-click global stuck forfeit:
+  // - Only the turn owner may acknowledge/trigger forfeiture.
+  // - Only allowed when NONE of the pending dice have any legal moves for the relevant resolver set.
+  // - When allowed, ALL pending dice are cleared at once (no per-die FIFO clicking).
   if (actorId !== rollerId) {
     return {
       nextState: state,
@@ -520,14 +523,6 @@ case "forfeitPendingDie": {
     return {
       nextState: state,
       serverMessage: mkError("BAD_TURN_STATE", "No pending dice to forfeit.", reqId),
-    };
-  }
-
-  const dieIndex = Number((msg as any).dieIndex);
-  if (!Number.isInteger(dieIndex) || dieIndex < 0 || dieIndex >= state.pendingDice.length) {
-    return {
-      nextState: state,
-      serverMessage: mkError("BAD_MESSAGE", "Invalid dieIndex for forfeitPendingDie.", reqId),
     };
   }
 
@@ -546,7 +541,7 @@ case "forfeitPendingDie": {
     );
   }
 
-  // Forfeit is only allowed when NO pending die is live (i.e., team is stuck).
+  // Only allowed when the team is globally stuck (no pending die has any legal moves).
   const anyLive = state.pendingDice.some((pd) => dieIsLive(pd.value));
   if (anyLive) {
     return {
@@ -555,34 +550,16 @@ case "forfeitPendingDie": {
     };
   }
 
-  // Fixed order (FIFO / lowest index) when stuck.
-  if (dieIndex !== 0) {
-    return {
-      nextState: state,
-      serverMessage: mkError("BAD_TURN_STATE", "Must forfeit pending dice in order (FIFO).", reqId),
-    };
-  }
-
-  const target = state.pendingDice[dieIndex];
-  if (dieIsLive(target.value)) {
-    return {
-      nextState: state,
-      serverMessage: mkError("BAD_TURN_STATE", "Die is not dead and cannot be forfeited.", reqId),
-    };
-  }
-
-  const nextPending = state.pendingDice.slice();
-  nextPending.splice(dieIndex, 1);
-
+  // Clear all pending dice in one action.
   const nextTurn = {
     ...state.turn,
-    awaitingDice: nextPending.length === 0,
+    awaitingDice: true,
   } as any;
 
   const nextState: SessionState = {
     ...(state as any),
     turn: nextTurn,
-    pendingDice: nextPending.length > 0 ? nextPending : undefined,
+    pendingDice: undefined,
   } as any;
 
   return {
@@ -590,6 +567,7 @@ case "forfeitPendingDie": {
     serverMessage: mkStateSync(roomCode, nextState, reqId),
   };
 }
+
 
 
 case "getLegalMoves": {
