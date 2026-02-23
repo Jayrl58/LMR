@@ -520,6 +520,15 @@ case "forfeitPendingDie": {
   }
 
   if (!Array.isArray(state.pendingDice) || state.pendingDice.length === 0) {
+    // Idempotency: if pending dice are already cleared and we're awaiting the next roll,
+    // treat duplicate/stale forfeit requests as a no-op success.
+    if ((state.turn as any)?.awaitingDice === true) {
+      return {
+        nextState: state,
+        serverMessage: mkStateSync(roomCode, state, reqId),
+      };
+    }
+
     return {
       nextState: state,
       serverMessage: mkError("BAD_TURN_STATE", "No pending dice to forfeit.", reqId),
@@ -550,17 +559,34 @@ case "forfeitPendingDie": {
     };
   }
 
-  // Clear all pending dice in one action.
-  const nextTurn = {
-    ...state.turn,
-    awaitingDice: true,
-  } as any;
+  // Clear all pending dice in one action and transition back to awaitingDice.
+// This must mirror end-of-resolution turn advancement semantics:
+// - If bankedDice > 0, the roller keeps the turn to roll again.
+// - In team play, a finished roller keeps the turn (continuing roll/delegation).
+// - Otherwise, advance to the next actor.
+const banked0 = Number((state as any).bankedDice ?? 0);
 
-  const nextState: SessionState = {
-    ...(state as any),
-    turn: nextTurn,
-    pendingDice: undefined,
-  } as any;
+let nextActorId = rollerId;
+if (teamPlayOn && rollerFinished) {
+  nextActorId = rollerId;
+} else if (banked0 > 0) {
+  nextActorId = rollerId;
+} else {
+  nextActorId = computeNextActorId(game, rollerId);
+}
+
+const nextTurn = {
+  ...state.turn,
+  nextActorId,
+  awaitingDice: true,
+} as any;
+
+const nextState: SessionState = {
+  ...(state as any),
+  turn: nextTurn,
+  pendingDice: undefined,
+  actingActorId: undefined,
+} as any;
 
   return {
     nextState,
@@ -737,9 +763,28 @@ case "move": {
     // Kill-roll (glossary-aligned): a capturing MOVE (one peg moved for one die) banks exactly +1 extra die.
 // Note: a Move is expected to have at most one capture; we enforce that invariant here and compute earned dice from the canonical path:
 //   response.result.replayEntry.move.captures
-    const captures = (response as any)?.result?.replayEntry?.move?.captures;
+    const canonicalCaptures = (response as any)?.result?.replayEntry?.move?.captures;
+
+    // Prefer canonical capture array, but tolerate legacy/alternate response shapes.
+    let captures: any[] = Array.isArray(canonicalCaptures) ? canonicalCaptures : [];
+
+    if (captures.length === 0) {
+      const altCandidates = [
+        (response as any)?.result?.captures,
+        (response as any)?.result?.moveResult?.captures,
+        (response as any)?.result?.replayEntry?.captures,
+        (response as any)?.result?.move?.captures,
+      ];
+      for (const c of altCandidates) {
+        if (Array.isArray(c) && c.length > 0) {
+          captures = c;
+          break;
+        }
+      }
+    }
+
     if (!Array.isArray(captures)) {
-      throw new Error("INVARIANT_VIOLATION: moveResult missing canonical replayEntry.move.captures array");
+      throw new Error("INVARIANT_VIOLATION: moveResult missing captures array");
     }
     if (captures.length > 1) {
       throw new Error("INVARIANT_VIOLATION: a single move cannot capture more than one peg");
