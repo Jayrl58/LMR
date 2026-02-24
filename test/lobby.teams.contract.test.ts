@@ -13,32 +13,54 @@ import { makeState } from "./helpers";
 
 function makeQueue(ws: WebSocket) {
   const q: string[] = [];
+  const history: string[] = [];
+  const MAX_HISTORY = 50;
   let resolve: ((s: string) => void) | null = null;
 
   ws.on("message", (d) => {
-    const s = typeof d === "string" ? d : d.toString("utf8");
+    const s = String(d);
+
+    history.push(s);
+    if (history.length > MAX_HISTORY) history.splice(0, history.length - MAX_HISTORY);
+
     if (resolve) {
       const r = resolve;
       resolve = null;
       r(s);
-    } else q.push(s);
+      return;
+    }
+    q.push(s);
   });
 
-  return async () => {
+  type NextFn = (() => Promise<string>) & { history: string[] };
+
+  const nextFn = (async function next(): Promise<string> {
     if (q.length) return q.shift()!;
     return await new Promise<string>((r) => (resolve = r));
-  };
+  }) as unknown as NextFn;
+
+  nextFn.history = history;
+  return nextFn;
 }
 
-async function nextWithTimeout(next: () => Promise<string>, label: string, ms = 2500) {
-  return await Promise.race([
-    next(),
-    new Promise<string>((_, reject) =>
-      setTimeout(() => reject(new Error(`Timeout waiting for message (${label}) after ${ms}ms`)), ms)
-    ),
-  ]);
-}
+async function nextWithTimeout(next: (() => Promise<string>) & { history?: string[] }, label: string, ms = 2500) {
+  const timeout = new Promise<string>((_, reject) =>
+    setTimeout(() => {
+      const tail = (next.history ?? []).slice(-12).map((raw) => {
+        try {
+          const m = JSON.parse(raw);
+          return m?.type ? `${m.type}${m.reqId ? `(${m.reqId})` : ""}` : raw.slice(0, 80);
+        } catch {
+          return raw.slice(0, 80);
+        }
+      });
+      const extra = tail.length ? `\nLast messages: ${tail.join(" | ")}` : "";
+      reject(new Error(`Timeout waiting for message (${label}) after ${ms}ms${extra}`));
+    }, ms)
+  );
 
+  return await Promise.race([next(), timeout]);
+}
 async function wsOpen(ws: WebSocket) {
   await new Promise<void>((resolve, reject) => {
     ws.on("open", () => resolve());
@@ -284,7 +306,7 @@ describe("lobby teams contract (assignment + self-only swap)", () => {
       waitForType(nexts[3], "roomJoined", "3 roomJoined"),
     ]);
 
-    const p1 = j1.actorId as string;
+    const p1 = j1.playerId as string;
 
     setLobbyGameConfig(wss[0], { playerCount: 4, teamPlay: true, teamCount: 2 });
 
@@ -335,12 +357,11 @@ describe("lobby teams contract (assignment + self-only swap)", () => {
 
     setLobbyGameConfig(wss[0], { playerCount: 4, teamPlay: true, teamCount: 2 });
 
-    // make roster complete + trigger lock by ready
-    setReady(wss[0], true);
-    const lLocked = await waitForLobby(nexts[0], "0 lobby locked", (m) => m.lobby?.players?.length === 4 && !!extractTeams(m)?.isLocked);
-    expect(extractTeams(lLocked).isLocked).toBe(true);
-
-    setTeam(wss[1], "A", "req-locked");
+    // make roster complete + trigger lock by ready (all players ready)
+for (const ws of wss) setReady(ws, true);
+const lLocked = await waitForLobby(nexts[0], "lobby locked", (m) => extractTeams(m)?.isLocked === true);
+expect(extractTeams(lLocked)?.isLocked).toBe(true);
+setTeam(wss[1], "A", "req-locked");
     await expectErrorCodeSoon(nexts[1], "1 setTeam locked", "LOBBY_LOCKED");
 
     wss.forEach((ws) => ws.close());
@@ -528,7 +549,7 @@ describe("lobby teams hardening (rejections + persistence)", () => {
     await waitForType(next1, "welcome", "1 welcomeEcho");
     join(ws1, roomCode);
     const j1 = await waitForType(next1, "roomJoined", "1 roomJoined");
-    const p1 = j1.actorId as string;
+    const p1 = j1.playerId as string;
 
     // enable teamPlay
     setLobbyGameConfig(ws0, { playerCount: 4, teamPlay: true, teamCount: 2 });
@@ -552,7 +573,7 @@ describe("lobby teams hardening (rejections + persistence)", () => {
     await waitForType(next1b, "welcome", "1b welcomeEcho");
     join(ws1b, roomCode);
     const j1b = await waitForType(next1b, "roomJoined", "1b roomJoined");
-    expect(j1b.actorId).toBe(p1);
+    expect(j1b.playerId).toBe(p1);
 
     const lAfterRejoin = await waitForLobby(next0, "0 lobby after rejoin", (m) => m.lobby?.players?.length === 2 && !!extractTeams(m));
     expectTeamsPartition(lAfterRejoin);
@@ -594,7 +615,7 @@ describe("lobby teams hardening (rejections + persistence)", () => {
 
     join(ws1, roomCode);
     const j1 = await waitForType(next1, "roomJoined", "1 roomJoined");
-    const p1 = j1.actorId as string;
+    const p1 = j1.playerId as string;
 
     join(ws2, roomCode);
     await waitForType(next2, "roomJoined", "2 roomJoined");
@@ -626,7 +647,7 @@ describe("lobby teams hardening (rejections + persistence)", () => {
     await waitForType(next1b, "welcome", "1b welcomeEcho");
     join(ws1b, roomCode);
     const j1b = await waitForType(next1b, "roomJoined", "1b roomJoined");
-    expect(j1b.actorId).toBe(p1);
+    expect(j1b.playerId).toBe(p1);
 
     const l3b = await waitForLobby(next0, "0 lobby after rejoin", (m) => m.lobby?.players?.length === 3 && !!extractTeams(m));
     expectTeamsPartition(l3b);

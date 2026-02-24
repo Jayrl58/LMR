@@ -909,13 +909,15 @@ export function startWsServer(opts: WsServerOptions) {
 if (msg.type === "setReady") {
         const ready = !!(msg as any).ready;
 
+        // Record readiness first so the "first ready=true" can trigger team lock correctly.
+        room.readyByPlayer.set(playerId, ready);
+
         // Team Play: lock teams on the first ready=true, but only once the lobby roster is complete
         // (playerCount gate) so we can scale cleanly to 4/6/8 player team sizes.
         if (ready) {
           ensureTeamLockIfEligible(room);
         }
 
-        room.readyByPlayer.set(playerId, ready);
         persist(room);
         emitLobbySync(room, reqId);
         return;
