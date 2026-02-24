@@ -764,7 +764,7 @@ export function startWsServer(opts: WsServerOptions) {
 
         persist(room);
 
-        send(ws, withReqId({ type: "roomJoined", roomCode: roomCode, actorId: playerId } as any, reqId));
+        send(ws, withReqId({ type: "roomJoined", roomCode: roomCode, clientId: cid, playerId, reconnected: !!existing } as any, reqId));
         emitLobbySync(room, reqId);
 
         // IMPORTANT: If the room is already active (including after persistence restore),
