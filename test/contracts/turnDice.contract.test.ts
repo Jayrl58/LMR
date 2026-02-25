@@ -172,6 +172,310 @@ describe("Contract: turn + dice semantics via tryApplyMoveWithResponse()", () =>
 import { handleClientMessage, type SessionState } from "../../src/server/handleMessage";
 
 describe("Phase 5 contract targets: pending dice + auto-pass timing (server)", () => {
+  it("server rejects roll when actorId does not match turn.nextActorId (NOT_YOUR_TURN)", () => {
+    const p0 = P("p0");
+    const p1 = P("p1");
+
+    const game: any = makeState({ playerCount: 2, doubleDice: false } as any);
+
+    const session0: SessionState = {
+      game,
+      turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
+      actingActorId: undefined,
+      pendingDice: undefined,
+      bankedDice: 0,
+    } as any;
+
+    const r1 = handleClientMessage(session0, { type: "roll", actorId: p1, dice: [1] } as any);
+
+    expect((r1.serverMessage as any).type).toBe("error");
+    expect((r1.serverMessage as any).code).toBe("NOT_YOUR_TURN");
+
+    // Deterministic: rejected input must not mutate session state
+    expect(r1.nextState).toEqual(session0);
+  });
+
+  it("error stability: rejection responses include stable code and non-empty message; no state mutation", () => {
+    const p0 = P("p0");
+    const p1 = P("p1");
+
+    // Case A: NOT_YOUR_TURN on roll
+    {
+      const game: any = makeState({ playerCount: 2 } as any);
+      const session0: SessionState = {
+        game,
+        turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
+        actingActorId: undefined,
+        pendingDice: undefined,
+        bankedDice: 0,
+      } as any;
+
+      const r = handleClientMessage(session0, { type: "roll", actorId: p1, dice: [1] } as any);
+
+      expect((r.serverMessage as any).type).toBe("error");
+      expect((r.serverMessage as any).code).toBe("NOT_YOUR_TURN");
+      expect(typeof (r.serverMessage as any).message).toBe("string");
+      expect(((r.serverMessage as any).message as string).length).toBeGreaterThan(0);
+      expect(((r.serverMessage as any).message as string)).toContain("Expected actorId=");
+      expect(r.nextState).toEqual(session0);
+    }
+
+    // Case B: BAD_TURN_STATE on forfeit when any pending die has legal moves (team play finisher delegation)
+    {
+      const game: any = makeState({ playerCount: 4 } as any);
+      game.config = game.config ?? { options: {} };
+      game.config.options = { ...(game.config.options ?? {}), teamPlay: true };
+
+      // p0 finished, p1 teammate not finished (can move)
+      game.players = game.players ?? {};
+      game.players[p0] = { ...(game.players[p0] ?? {}), teamId: "T0", hasFinished: true };
+      game.players[p1] = { ...(game.players[p1] ?? {}), teamId: "T0", hasFinished: false };
+
+      const session0: SessionState = {
+        game,
+        turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
+        actingActorId: undefined,
+        pendingDice: undefined,
+        bankedDice: 0,
+      } as any;
+
+      const r1 = handleClientMessage(session0, { type: "roll", actorId: p0, dice: [1] } as any);
+      expect((r1.serverMessage as any).type).toBe("stateSync");
+      expect(Array.isArray((r1.nextState as any).pendingDice)).toBe(true);
+
+      const r2 = handleClientMessage(r1.nextState as any, { type: "forfeitPendingDie", actorId: p0 } as any);
+
+      expect((r2.serverMessage as any).type).toBe("error");
+      expect((r2.serverMessage as any).code).toBe("BAD_TURN_STATE");
+      expect(typeof (r2.serverMessage as any).message).toBe("string");
+      expect(((r2.serverMessage as any).message as string).length).toBeGreaterThan(0);
+
+      // Must be a deterministic semantic token (avoid brittle full-string matching)
+      const msg = ((r2.serverMessage as any).message as string).toLowerCase();
+      expect(msg).toContain("cannot forfeit");
+      expect(msg).toContain("legal moves");
+
+      expect(r2.nextState).toEqual(r1.nextState);
+    }
+  });
+
+
+  it("team play: global-stuck forfeit is rejected when any teammate can move any pending die", () => {
+    const p0 = P("p0"); // turn owner (finished)
+    const p1 = P("p1"); // teammate resolver
+
+    const game: any = makeState({ playerCount: 4 } as any);
+    game.config = game.config ?? { options: {} };
+    game.config.options = { ...(game.config.options ?? {}), teamPlay: true };
+
+    game.players = game.players ?? {};
+    game.players[p0] = { ...(game.players[p0] ?? {}), teamId: "T0", hasFinished: true };
+    game.players[p1] = { ...(game.players[p1] ?? {}), teamId: "T0" };
+
+    const session0: SessionState = {
+      game,
+      turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
+      actingActorId: undefined,
+      pendingDice: undefined,
+      bankedDice: 0,
+    } as any;
+
+    // Roll a 1: with delegation active, pending die should be created unassigned and teammate can typically enter.
+    const r1 = handleClientMessage(session0, { type: "roll", actorId: p0, dice: [1] } as any);
+    expect((r1.serverMessage as any).type).toBe("stateSync");
+    expect(Array.isArray((r1.nextState as any).pendingDice)).toBe(true);
+    expect(((r1.nextState as any).pendingDice ?? [])[0]?.controllerId).toBeNull();
+
+    // Global-stuck forfeit must be rejected because teammate has legal moves for the pending die.
+    const r2 = handleClientMessage(r1.nextState as any, { type: "forfeitPendingDie", actorId: p0 } as any);
+
+    expect((r2.serverMessage as any).type).toBe("error");
+    expect((r2.serverMessage as any).code).toBe("BAD_TURN_STATE");
+    const msg = (((r2.serverMessage as any).message ?? "") as any).toString().toLowerCase();
+    expect(msg).toContain("cannot forfeit");
+    expect(msg).toContain("legal moves");
+
+    // Rejection must not mutate state.
+    expect(r2.nextState).toEqual(r1.nextState);
+  });
+
+  it("team play: forfeitPendingDie is rejected while an active delegated die exists (controller still has legal moves)", () => {
+    const p0 = P("p0"); // turn owner (finished)
+    const p1 = P("p1"); // teammate controller
+
+    const game: any = makeState({ playerCount: 4 } as any);
+    game.config = game.config ?? { options: {} };
+    game.config.options = { ...(game.config.options ?? {}), teamPlay: true };
+
+    game.players = game.players ?? {};
+    game.players[p0] = { ...(game.players[p0] ?? {}), teamId: "T0", hasFinished: true };
+    game.players[p1] = { ...(game.players[p1] ?? {}), teamId: "T0" };
+
+    const session0: SessionState = {
+      game,
+      turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
+      actingActorId: undefined,
+      pendingDice: undefined,
+      bankedDice: 0,
+    } as any;
+
+    // Roll a 1: pending die becomes available for delegation.
+    const r1 = handleClientMessage(session0, { type: "roll", actorId: p0, dice: [1] } as any);
+    expect((r1.serverMessage as any).type).toBe("stateSync");
+    expect(Array.isArray((r1.nextState as any).pendingDice)).toBe(true);
+    expect(((r1.nextState as any).pendingDice ?? [])[0]?.controllerId).toBeNull();
+
+    // Assign the die to p1 (active delegated die).
+    const r2 = handleClientMessage(r1.nextState as any, {
+      type: "assignPendingDie",
+      actorId: p0,
+      dieIndex: 0,
+      controllerId: p1,
+    } as any);
+    expect((r2.serverMessage as any).type).toBe("stateSync");
+    expect(((r2.nextState as any).pendingDice ?? [])[0]?.controllerId).toBe(p1);
+
+    // Turn owner attempts global forfeit while delegated die is active; must be rejected (not globally stuck).
+    const r3 = handleClientMessage(r2.nextState as any, { type: "forfeitPendingDie", actorId: p0 } as any);
+
+    expect((r3.serverMessage as any).type).toBe("error");
+    expect((r3.serverMessage as any).code).toBe("BAD_TURN_STATE");
+    const msg = (((r3.serverMessage as any).message ?? "") as any).toString().toLowerCase();
+    expect(msg).toContain("cannot forfeit");
+    expect(msg).toContain("legal moves");
+
+    // Rejection must not mutate state (delegation remains active).
+    expect(r3.nextState).toEqual(r2.nextState);
+    expect(((r3.nextState as any).pendingDice ?? [])[0]?.controllerId).toBe(p1);
+  });
+
+  it("team play: bankedDice preserves turn owner after global-stuck forfeit (roller finished)", () => {
+    const p0 = P("p0"); // turn owner (finished)
+    const p1 = P("p1"); // teammate (also finished -> no resolver moves)
+
+    const game: any = makeState({ playerCount: 4 } as any);
+    game.config = game.config ?? { options: {} };
+    game.config.options = { ...(game.config.options ?? {}), teamPlay: true };
+
+    game.players = game.players ?? {};
+    game.players[p0] = { ...(game.players[p0] ?? {}), teamId: "T0", hasFinished: true };
+    game.players[p1] = { ...(game.players[p1] ?? {}), teamId: "T0", hasFinished: true };
+
+    // Construct a deterministic session state: pending die exists, roller is finished, teammate resolver cannot move.
+    const session0: SessionState = {
+      game,
+      turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: false } as any,
+      actingActorId: undefined,
+      pendingDice: [{ value: 2, controllerId: null }],
+      bankedDice: 1,
+    } as any;
+
+    const r1 = handleClientMessage(session0, { type: "forfeitPendingDie", actorId: p0 } as any);
+
+    expect((r1.serverMessage as any).type).toBe("stateSync");
+
+    // Pending dice cleared and awaitingDice restored
+    expect((r1.nextState as any).pendingDice == null || (r1.nextState as any).pendingDice.length === 0).toBe(true);
+    expect((r1.nextState as any).turn?.awaitingDice).toBe(true);
+
+    // Turn must remain with roller (finisher keeps turn; bankedDice would also keep it)
+    expect((r1.nextState as any).turn?.nextActorId).toBe(p0);
+
+    // bankedDice should not be consumed by forfeit
+    expect((r1.nextState as any).bankedDice).toBe(1);
+  });
+
+  it("non-team: global-stuck forfeit sets awaitingDice=true and advances turn when bankedDice=0", () => {
+    const p0 = P("p0");
+    const game: any = makeState({ playerCount: 2, doubleDice: true } as any);
+
+    const session0: SessionState = {
+      game,
+      turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: false } as any,
+      actingActorId: undefined,
+      pendingDice: [{ value: 2, controllerId: p0 }, { value: 3, controllerId: p0 }],
+      bankedDice: 0,
+    } as any;
+
+    const r1 = handleClientMessage(session0, { type: "forfeitPendingDie", actorId: p0 } as any);
+
+    expect((r1.serverMessage as any).type).toBe("stateSync");
+
+    // Pending dice cleared and awaitingDice restored
+    expect((r1.nextState as any).pendingDice == null || (r1.nextState as any).pendingDice.length === 0).toBe(true);
+    expect((r1.nextState as any).turn?.awaitingDice).toBe(true);
+
+    // With no banked dice and not team-play finisher rule, turn should advance to the next actor.
+    expect((r1.nextState as any).turn?.nextActorId).toBe(P("p1"));
+  });
+
+  it("error stability: rejection paths return deterministic codes and do not mutate state", () => {
+    const p0 = P("p0");
+    const p1 = P("p1");
+
+    // 1) NOT_YOUR_TURN on roll
+    {
+      const game: any = makeState({ playerCount: 2 } as any);
+      const session0: SessionState = {
+        game,
+        turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: true } as any,
+        actingActorId: undefined,
+        pendingDice: undefined,
+        bankedDice: 0,
+      } as any;
+
+      const r = handleClientMessage(session0, { type: "roll", actorId: p1, dice: [1] } as any);
+      expect((r.serverMessage as any).type).toBe("error");
+      expect((r.serverMessage as any).code).toBe("NOT_YOUR_TURN");
+      expect(r.nextState).toEqual(session0);
+    }
+
+    // 2) BAD_TURN_STATE on forfeit when any pending die has legal moves (non-team)
+    {
+      const game: any = makeState({ playerCount: 2 } as any);
+      const session0: SessionState = {
+        game,
+        turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: false } as any,
+        actingActorId: undefined,
+        pendingDice: [{ value: 1, controllerId: p0 }],
+        bankedDice: 0,
+      } as any;
+
+      const r = handleClientMessage(session0, { type: "forfeitPendingDie", actorId: p0 } as any);
+      expect((r.serverMessage as any).type).toBe("error");
+      expect((r.serverMessage as any).code).toBe("BAD_TURN_STATE");
+      expect(r.nextState).toEqual(session0);
+    }
+
+    // 3) BAD_MESSAGE on assignPendingDie when controllerId is missing (team play)
+    {
+      const game: any = makeState({ playerCount: 4 } as any);
+      game.config = game.config ?? { options: {} };
+      game.config.options = { ...(game.config.options ?? {}), teamPlay: true };
+      game.players = game.players ?? {};
+      game.players[p0] = { ...(game.players[p0] ?? {}), teamId: "T0", hasFinished: true };
+      game.players[p1] = { ...(game.players[p1] ?? {}), teamId: "T0" };
+
+      const session0: SessionState = {
+        game,
+        turn: { nextActorId: p0, dicePolicy: "external", awaitingDice: false } as any,
+        actingActorId: undefined,
+        pendingDice: [{ value: 1, controllerId: null }],
+        bankedDice: 0,
+      } as any;
+
+      const r = handleClientMessage(session0, { type: "assignPendingDie", actorId: p0, dieIndex: 0 } as any);
+      expect((r.serverMessage as any).type).toBe("error");
+      expect((r.serverMessage as any).code).toBe("BAD_MESSAGE");
+      expect(r.nextState).toEqual(session0);
+    }
+  });
+
+
+
+
+
+
   it("does NOT auto-pass/forfeit a die immediately on roll if any unresolved die has legal moves (double-dice start 1+5)", () => {
     const p0 = P("p0");
 

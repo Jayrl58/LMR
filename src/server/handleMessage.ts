@@ -508,6 +508,8 @@ case "forfeitPendingDie": {
     };
   }
 
+  const rollerId = String((state.turn as any)?.nextActorId ?? "");
+
   // One-click global stuck forfeit:
   // - Only the turn owner may acknowledge/trigger forfeiture.
   // - Only allowed when NONE of the pending dice have any legal moves for the relevant resolver set.
