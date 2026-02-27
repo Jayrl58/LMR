@@ -96,4 +96,53 @@ describe("server: teamPlay finisher keeps turn + can delegate subsequent rolls",
     } as any);
     expect(r3a.serverMessage.type).toBe("stateSync");
   });
+
+  it("terminal game state rejects roll (teamPlay 6P)", () => {
+    const p0 = "p0";
+    const game: any = makeState({ playerCount: 6, teamPlay: true } as any);
+
+    // Force terminal state
+    game.phase = "ended";
+    game.outcome = { kind: "team", winnerTeamId: game.players[p0].teamId, winnerTeamPlayersInFinishOrder: [p0, "p3"] };
+
+    const session0: SessionState = {
+      game,
+      turn: { nextActorId: p0, awaitingDice: true } as any,
+      pendingDice: undefined,
+      actingActorId: undefined,
+      bankedDice: 0,
+    };
+
+    const r1 = handleClientMessage(session0, { type: "roll", actorId: p0, dice: [1] } as any);
+
+    // Expected: an error (or at least NOT a normal progression message).
+    // This test will fail until the server gates on game.phase === "ended".
+    expect(r1.serverMessage.type).toBe("error");
+  });
+
+  it("terminal game state rejects roll (teamPlay 8P)", () => {
+    const p0 = "p0";
+    const game: any = makeState({ playerCount: 8, teamPlay: true } as any);
+
+    // Force terminal state
+    game.phase = "ended";
+    game.outcome = {
+      kind: "team",
+      winnerTeamId: game.players[p0].teamId,
+      winnerTeamPlayersInFinishOrder: [p0, "p4"],
+    };
+
+    const session0: SessionState = {
+      game,
+      turn: { nextActorId: p0, awaitingDice: true } as any,
+      pendingDice: undefined,
+      actingActorId: undefined,
+      bankedDice: 0,
+    };
+
+    const r1 = handleClientMessage(session0, { type: "roll", actorId: p0, dice: [1] } as any);
+
+    expect(r1.serverMessage.type).toBe("error");
+  });
+
 });
