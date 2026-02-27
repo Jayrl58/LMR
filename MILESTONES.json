@@ -23,11 +23,36 @@
       "title": "Double Dice Mode",
       "status": "COMPLETE",
       "children": [
-        { "id": "M3.1", "title": "pendingDice model", "status": "COMPLETE", "children": [] },
-        { "id": "M3.2", "title": "Per-die resolution lifecycle", "status": "COMPLETE", "children": [] },
-        { "id": "M3.3", "title": "Dead-die exhaustion", "status": "COMPLETE", "children": [] },
-        { "id": "M3.4", "title": "Auto-pass consumption", "status": "COMPLETE", "children": [] },
-        { "id": "M3.5", "title": "BankedDice baseline", "status": "COMPLETE", "children": [] }
+        {
+          "id": "M3.1",
+          "title": "pendingDice model",
+          "status": "COMPLETE",
+          "children": []
+        },
+        {
+          "id": "M3.2",
+          "title": "Per-die resolution lifecycle",
+          "status": "COMPLETE",
+          "children": []
+        },
+        {
+          "id": "M3.3",
+          "title": "Dead-die exhaustion",
+          "status": "COMPLETE",
+          "children": []
+        },
+        {
+          "id": "M3.4",
+          "title": "Auto-pass consumption",
+          "status": "COMPLETE",
+          "children": []
+        },
+        {
+          "id": "M3.5",
+          "title": "BankedDice baseline",
+          "status": "COMPLETE",
+          "children": []
+        }
       ]
     },
     {
@@ -35,40 +60,110 @@
       "title": "Team Play (2-Team Baseline)",
       "status": "COMPLETE",
       "children": [
-        { "id": "M4.1", "title": "Lobby team locking", "status": "COMPLETE", "children": [] },
-        { "id": "M4.2", "title": "Delegation mechanics", "status": "COMPLETE", "children": [] },
-        { "id": "M4.3", "title": "controllerId per pending die", "status": "COMPLETE", "children": [] },
-        { "id": "M4.4", "title": "Team win ordering (2-team context)", "status": "COMPLETE", "children": [] }
+        {
+          "id": "M4.1",
+          "title": "Lobby team locking",
+          "status": "COMPLETE",
+          "children": []
+        },
+        {
+          "id": "M4.2",
+          "title": "Delegation mechanics",
+          "status": "COMPLETE",
+          "children": []
+        },
+        {
+          "id": "M4.3",
+          "title": "controllerId per pending die",
+          "status": "COMPLETE",
+          "children": []
+        },
+        {
+          "id": "M4.4",
+          "title": "Team win ordering (2-team context)",
+          "status": "COMPLETE",
+          "children": []
+        }
       ]
     },
     {
       "id": "M5",
       "title": "Team Model Expansion",
-      "status": "IN_PROGRESS",
+      "status": "COMPLETE",
       "children": [
-        { "id": "M5.1", "title": "3 teams of 2 (6P board)", "status": "IN_PROGRESS", "children": [] },
-        { "id": "M5.2", "title": "4 teams of 2 (8P board)", "status": "IN_PROGRESS", "children": [] },
+        {
+          "id": "M5.1",
+          "title": "3 teams of 2 (6P board)",
+          "status": "COMPLETE",
+          "children": []
+        },
+        {
+          "id": "M5.2",
+          "title": "4 teams of 2 (8P board)",
+          "status": "COMPLETE",
+          "children": []
+        },
         {
           "id": "M5.3",
           "title": "Advanced delegation arbitration hardening",
           "status": "COMPLETE",
           "children": []
         },
-        { "id": "M5.4", "title": "Multi-team finish ordering", "status": "IN_PROGRESS", "children": [] },
-        { "id": "M5.5", "title": "Edge-case multi-team turn flow hardening", "status": "NOT_STARTED", "children": [] }
+        {
+          "id": "M5.4",
+          "title": "Multi-team finish ordering",
+          "status": "COMPLETE",
+          "children": []
+        },
+        {
+          "id": "M5.5",
+          "title": "Edge-case multi-team turn flow hardening",
+          "status": "COMPLETE",
+          "children": []
+        }
       ]
     },
     {
       "id": "OPT.KILLROLL",
-      "title": "Optional Module — Kill-Roll Banking Hardening",
+      "title": "Optional Module \u2014 Kill-Roll Banking Hardening",
       "status": "COMPLETE",
       "children": [
-        { "id": "KR.1", "title": "Canonical replayEntry.move.captures path enforced", "status": "COMPLETE", "children": [] },
-        { "id": "KR.2", "title": "Opponent capture banks +1", "status": "COMPLETE", "children": [] },
-        { "id": "KR.3", "title": "Teammate capture banks +0", "status": "COMPLETE", "children": [] },
-        { "id": "KR.4", "title": "Non-capture banks +0 (pass-over)", "status": "COMPLETE", "children": [] },
-        { "id": "KR.5", "title": "Multi-move accumulation (+1 per qualifying move)", "status": "COMPLETE", "children": [] },
-        { "id": "KR.6", "title": "Home-entry schema drift guard (banks +0)", "status": "COMPLETE", "children": [] }
+        {
+          "id": "KR.1",
+          "title": "Canonical replayEntry.move.captures path enforced",
+          "status": "COMPLETE",
+          "children": []
+        },
+        {
+          "id": "KR.2",
+          "title": "Opponent capture banks +1",
+          "status": "COMPLETE",
+          "children": []
+        },
+        {
+          "id": "KR.3",
+          "title": "Teammate capture banks +0",
+          "status": "COMPLETE",
+          "children": []
+        },
+        {
+          "id": "KR.4",
+          "title": "Non-capture banks +0 (pass-over)",
+          "status": "COMPLETE",
+          "children": []
+        },
+        {
+          "id": "KR.5",
+          "title": "Multi-move accumulation (+1 per qualifying move)",
+          "status": "COMPLETE",
+          "children": []
+        },
+        {
+          "id": "KR.6",
+          "title": "Home-entry schema drift guard (banks +0)",
+          "status": "COMPLETE",
+          "children": []
+        }
       ]
     },
     {
@@ -76,12 +171,42 @@
       "title": "UI Integration & Presentation",
       "status": "NOT_STARTED",
       "children": [
-        { "id": "M6.1", "title": "PendingDice UI visualization", "status": "NOT_STARTED", "children": [] },
-        { "id": "M6.2", "title": "Per-die controller UI representation", "status": "NOT_STARTED", "children": [] },
-        { "id": "M6.3", "title": "Delegation interaction flow", "status": "NOT_STARTED", "children": [] },
-        { "id": "M6.4", "title": "Kill-roll banking display feedback", "status": "NOT_STARTED", "children": [] },
-        { "id": "M6.5", "title": "Multi-team scaling layout", "status": "NOT_STARTED", "children": [] },
-        { "id": "M6.6", "title": "Player-at-bottom orientation rule enforcement", "status": "NOT_STARTED", "children": [] }
+        {
+          "id": "M6.1",
+          "title": "PendingDice UI visualization",
+          "status": "NOT_STARTED",
+          "children": []
+        },
+        {
+          "id": "M6.2",
+          "title": "Per-die controller UI representation",
+          "status": "NOT_STARTED",
+          "children": []
+        },
+        {
+          "id": "M6.3",
+          "title": "Delegation interaction flow",
+          "status": "NOT_STARTED",
+          "children": []
+        },
+        {
+          "id": "M6.4",
+          "title": "Kill-roll banking display feedback",
+          "status": "NOT_STARTED",
+          "children": []
+        },
+        {
+          "id": "M6.5",
+          "title": "Multi-team scaling layout",
+          "status": "NOT_STARTED",
+          "children": []
+        },
+        {
+          "id": "M6.6",
+          "title": "Player-at-bottom orientation rule enforcement",
+          "status": "NOT_STARTED",
+          "children": []
+        }
       ]
     }
   ]
