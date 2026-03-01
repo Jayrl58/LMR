@@ -241,10 +241,27 @@ export interface LobbySyncMessage {
  * Game / turn sync
  * ========================= */
 
+export type PendingDieInfo = {
+  value: number;
+  controllerId: PlayerId | null;
+};
+
 export interface TurnInfo {
   nextActorId: PlayerId;
   awaitingDice: boolean;
   dicePolicy?: "external";
+
+  /**
+   * Option A (external dice): remaining dice still resolvable this turn.
+   * In team play, each die may be unassigned (controllerId=null) until delegated.
+   */
+  pendingDice?: readonly PendingDieInfo[];
+
+  /**
+   * Extra dice owed to the roller (earned earlier) that must be rolled
+   * only after all pendingDice are resolved.
+   */
+  bankedDice?: number;
 }
 
 export interface StateSyncMessage {
