@@ -7,6 +7,7 @@ import type {
   LobbyState,
   LobbyGameConfig,
   GameStartOptions,
+  EndgameTimerMessage,
 } from "./protocol";
 import { handleClientMessage, type SessionState } from "./handleMessage";
 import { serializeState, hashState } from "../engine";
@@ -134,7 +135,7 @@ function isClientMessage(x: any): x is ClientMessage {
     case "move":
       return typeof x.actorId === "string" && isValidDiceArray((x as any).dice) && "move" in x;
 
-    
+
     case "rematchConsent":
       return typeof x.consent === "boolean";
 default:
@@ -480,7 +481,7 @@ function stopEndgameTimer(room: Room) {
 }
 
 function emitEndgameTimer(room: Room, secondsRemaining: number) {
-  const msg = JSON.stringify({
+  const msg: EndgameTimerMessage = {
     type: "endgameTimer",
     roomCode: room.code,
     remaining: secondsRemaining,
@@ -488,8 +489,8 @@ function emitEndgameTimer(room: Room, secondsRemaining: number) {
     gameSeq: room.gameSeq,
     secondsRemaining,
     secondsTotal: ENDGAME_RESULTS_SECONDS,
-  });
-  for (const ws of room.sockets) ws.send(msg);
+  };
+  for (const ws of room.sockets) send(ws, msg);
 }
 
 function startEndgameTimer(room: Room) {
@@ -844,7 +845,7 @@ export function startWsServer(opts: WsServerOptions) {
       }
 
 
-      
+
       if (msg.type === "setLobbyGameConfig") {
         if (room.phase !== "lobby") {
           send(ws, makeError("BAD_MESSAGE", "Cannot set lobby gameConfig after game start.", reqId));
