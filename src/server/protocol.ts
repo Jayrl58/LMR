@@ -7,25 +7,11 @@ export type RoomCode = string;
  * Client → Server messages
  * ========================= */
 
-
 export type ForfeitPendingDieMessage = {
   type: "forfeitPendingDie";
   actorId: PlayerId;
   dieIndex: number;
 };
-
-export type ClientMessage =
-  | HelloMessage
-  | JoinRoomMessage
-  | LeaveRoomMessage
-  | SetReadyMessage
-  | SetLobbyGameConfigMessage
-  | SetTeamMessage
-  | StartGameMessage
-  | RollMessage
-  | GetLegalMovesMessage
-  | MoveMessage
-  | AssignPendingDieMessage | ForfeitPendingDieMessage;
 
 export interface HelloMessage {
   type: "hello";
@@ -65,12 +51,12 @@ export interface SetLobbyGameConfigMessage {
  * startGame now locks all game-creation options.
  * playerCount is still required for backward compatibility.
  */
-
 export interface SetTeamMessage {
   type: "setTeam";
   team: "A" | "B";
   reqId?: string;
 }
+
 export interface StartGameMessage {
   type: "startGame";
   playerCount: number;
@@ -112,20 +98,33 @@ export interface MoveMessage {
   reqId?: string;
 }
 
-
-export interface AssignPendingDieMessage | ForfeitPendingDieMessage {
-  /**
-   * Team-play delegation: assign control of a specific pending die (by index) to a teammate
-   * who has at least one legal move for that die.
-   *
-   * Only the current turn owner may assign.
-   */
+/**
+ * Team-play delegation: assign control of a specific pending die (by index) to a teammate
+ * who has at least one legal move for that die.
+ *
+ * Only the current turn owner may assign.
+ */
+export interface AssignPendingDieMessage {
   type: "assignPendingDie";
   actorId: PlayerId; // turn owner
   dieIndex: number; // index into server-authoritative turn.pendingDice / session.pendingDice
   controllerId: PlayerId;
   reqId?: string;
 }
+
+export type ClientMessage =
+  | HelloMessage
+  | JoinRoomMessage
+  | LeaveRoomMessage
+  | SetReadyMessage
+  | SetLobbyGameConfigMessage
+  | SetTeamMessage
+  | StartGameMessage
+  | RollMessage
+  | GetLegalMovesMessage
+  | MoveMessage
+  | AssignPendingDieMessage
+  | ForfeitPendingDieMessage;
 
 /* =========================
  * Game creation options
@@ -216,7 +215,6 @@ export interface LobbyTeams {
    */
   isLocked: boolean;
 }
-
 
 export interface LobbyState {
   roomCode: RoomCode;
