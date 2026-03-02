@@ -124,3 +124,48 @@ invariants for 3x2 and 4x2 team modes.
     creation.
 -   Avoided committing `ui__quarantined/` during selective add.
 -   Reinforced discipline of explicit file adds over `git add .`.
+
+------------------------------------------------------------------------
+
+## 2026-03-02 --- Server ↔ UI Contract Hardening (External Dice Flow)
+
+### Context
+
+Live WebSocket multi-client validation (2P, doubleDice ON, killRoll OFF)
+using localhost:8788 console and multiple browser sessions.
+
+### What Was Verified
+
+- Double-dice sequencing with roll `[1,2]` behaves deterministically.
+- Banked die behavior confirmed (1 and 6 bank one die).
+- Pending dice must resolve before roll (`BAD_TURN_STATE` enforced).
+- `NOT_YOUR_TURN` enforcement confirmed.
+- Enter-on-1 from base validated.
+- Correct turn retention after partial resolution.
+- Correct turn advance after full resolution.
+- `legalMoves` payload structure confirmed to include:
+  - actorId
+  - dice array
+  - active die value
+  - moves list
+  - turn snapshot
+- `turn` payload includes `pendingDice` and `bankedDice` when applicable.
+
+### Observed Friction
+
+- Window context confusion (prototype vs console vs multiple clients).
+- Intermittent “No legalMoves received yet” states during external dice testing.
+- Actor claim switching (p0/p1) not visually obvious in console UI.
+
+### Technical Observations
+
+- Server behavior appears internally consistent when correct actor and
+  window context are used.
+- Intermittent missing `legalMoves` likely UI handling rather than engine emission.
+- No engine regressions detected.
+- Server↔UI contract not yet formally documented.
+
+### Next Focus
+
+Isolate and deterministically reproduce intermittent missing `legalMoves`
+in external dice flow to confirm whether issue is emission-layer or UI-layer.
