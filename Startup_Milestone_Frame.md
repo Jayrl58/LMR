@@ -1,40 +1,20 @@
-PROJECT: LMR Project STARTED: 2025-12-15
+# Startup Milestone Frame --- LMR Project
 
-MILESTONES
-
-✓ M1 --- Engine Core (Rules Authority Alignment) ✓ M2 --- Server
-Authority + Turn Invariants ✓ M3 --- Double Dice Mode ✓ M4 --- Team Play
-(2-Team Baseline) ✓ M5 --- Team Model Expansion (3x2, 4x2, Hardening
-Verified) → M6 --- UI Integration (React + Rotation Model) ○ M7 ---
-Release Readiness (Modes + Snapshot Freeze)
+Status: Updated after M5 completion verification
 
 ------------------------------------------------------------------------
 
-ACTIVE MILESTONE EXPANSION
+COMPLETE M1 --- Engine Core (Authoritative Rules Engine) COMPLETE M2 ---
+Server Authority Layer COMPLETE M3 --- Double Dice Mode COMPLETE M4 ---
+Team Play (2-Team Baseline)
 
-M6 --- UI Integration (ACTIVE)
+COMPLETE M5 --- Team Model Expansion COMPLETE M5.1 --- 3 teams of 2 (6P
+board) COMPLETE M5.2 --- 4 teams of 2 (8P board) COMPLETE M5.3 ---
+Advanced delegation arbitration hardening COMPLETE M5.4 --- Multi-team
+finish ordering COMPLETE M5.5 --- Edge-case multi-team turn flow
+hardening
 
-IN_PROGRESS - React board rendering scaffold - Player rotation model
-binding - Engine → UI state contract mapping
+COMPLETE OPT.KILLROLL --- Optional Module --- Kill-Roll Banking
+Hardening
 
-NOT_STARTED - Move animation layer - Socket lifecycle synchronization
-UI - Game-over presentation state - Mode selection integration
-(double-dice / kill-roll)
-
-------------------------------------------------------------------------
-
-SESSION DELTA (update at Continuity Lock only) DATE:
-`<YYYY-MM-DD>`{=html}
-
-## DONE:
-
-## MOVED TO IN_PROGRESS:
-
-## BLOCKED:
-
-------------------------------------------------------------------------
-
-Rules: - \~5 (±2) top-level milestones only - One screen preferred - No
-narrative in roster - Expand only ACTIVE milestone automatically -
-Manual expansion allowed via: expand: M# - Milestone status updates
-occur ONLY during Continuity Lock
+NOT_STARTED M6 --- UI Integration & Presentation
