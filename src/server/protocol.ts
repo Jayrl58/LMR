@@ -112,6 +112,16 @@ export interface AssignPendingDieMessage {
   reqId?: string;
 }
 
+/**
+ * Endgame / rematch flow: player consent for rematch while game.phase === "ended".
+ * Only seated players may consent (enforced server-side).
+ */
+export interface RematchConsentMessage {
+  type: "rematchConsent";
+  consent: boolean;
+  reqId?: string;
+}
+
 export type ClientMessage =
   | HelloMessage
   | JoinRoomMessage
@@ -124,7 +134,8 @@ export type ClientMessage =
   | GetLegalMovesMessage
   | MoveMessage
   | AssignPendingDieMessage
-  | ForfeitPendingDieMessage;
+  | ForfeitPendingDieMessage
+  | RematchConsentMessage;
 
 /* =========================
  * Game creation options
@@ -161,6 +172,7 @@ export type ServerMessage =
   | StateSyncMessage
   | LegalMovesMessage
   | MoveResultMessage
+  | EndgameTimerMessage
   | ErrorMessage;
 
 export interface WelcomeMessage {
@@ -265,6 +277,13 @@ export interface TurnInfo {
 export interface StateSyncMessage {
   type: "stateSync";
   roomCode: RoomCode;
+
+  /**
+   * Monotonically increasing per reset-to-lobby (rematch or auto-reset).
+   * Used by clients to ignore stale endgame timer events.
+   */
+  gameSeq: number;
+
   state: string;
   stateHash: string;
   turn: TurnInfo;
@@ -300,6 +319,28 @@ export interface MoveResultMessage {
   roomCode: RoomCode;
   response: any;
   reqId?: string;
+}
+
+/**
+ * Endgame Results countdown message (T=180s).
+ * Emitted once per second while game.phase === "ended".
+ */
+export interface EndgameTimerMessage {
+  type: "endgameTimer";
+  roomCode: RoomCode;
+
+  /**
+   * Remaining seconds in the countdown (duplicate field names exist for legacy compatibility).
+   */
+  remaining: number;
+  total: number;
+
+  /**
+   * Legacy/compat fields sent by the server (kept to match runtime).
+   */
+  gameSeq: number;
+  secondsRemaining: number;
+  secondsTotal: number;
 }
 
 export interface ErrorMessage {
