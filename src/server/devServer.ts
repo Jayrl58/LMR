@@ -1,4 +1,4 @@
-﻿import { startWsServer } from "./wsServer";
+import { startWsServer } from "./wsServer";
 import { startHttpConsole } from "./httpConsole";
 import { makeState } from "../engine/makeState";
 
@@ -29,6 +29,13 @@ const initialState = makeState({
   doubleDice,
   teamPlay,
 });
+
+// Enable explicit no-move acknowledgement (Option A) in dev server.
+// This activates the gated external-dice behavior in handleMessage.ts.
+(initialState as any).turn = {
+  ...(initialState as any).turn,
+  noMoveAck: true,
+};
 
 const ws = startWsServer({
   port: wsPort,

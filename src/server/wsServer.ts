@@ -132,6 +132,9 @@ function isClientMessage(x: any): x is ClientMessage {
       return false;
     }
 
+    case "forfeitPendingDie":
+      return typeof x.actorId === "string";
+      
     case "move":
       return typeof x.actorId === "string" && isValidDiceArray((x as any).dice) && "move" in x;
 

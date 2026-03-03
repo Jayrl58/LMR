@@ -541,8 +541,11 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
   let lastLobby = null;
   let lastLobbyError = "";
 
-  // Moves shown in the right column (for last requested die)
+  // Moves received from server for last requested die (may be empty)
   let lastMoves = [];
+
+  // Moves currently displayed in the moves table (may include synthetic actions like FORFEIT)
+  let displayedMoves = [];
   let lastAction = "";
 
   // Roll slots (always length = dicePerRoll())
@@ -702,7 +705,7 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
         selectedPendingIdx = i;
         // Always clear moves immediately on die change to avoid stale UI if request fails.
         lastMoves = [];
-        renderMoves([]);
+        displayedMoves = lastMoves = renderMoves([]);
         moveIndexEl.value = "";
         syncUI();
         if (autoFetch) requestMovesForSelectedPendingDie();
@@ -728,9 +731,31 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
   }
 
   function renderMoves(moves){
+    // If the selected die has no legal moves, offer a synthetic "forfeit" action in the
+    // moves table.
+    // Note: forfeitPendingDie is a GLOBAL-stuck acknowledgement (it will be rejected by
+    // the server if ANY pending die is live).
+    const actorId = (actorIdEl.value || "").trim();
+    const isTurnOwner = !!actorId && (turnNextActorId == null || actorId === String(turnNextActorId));
+
+    const canOfferForfeit =
+      joined &&
+      isTurnOwner &&
+      turnAwaitingDice === false &&
+      Array.isArray(pendingDiceUI) &&
+      pendingDiceUI.length > 0 &&
+      Array.isArray(moves) &&
+      moves.length === 0;
+
+    const effectiveMoves = canOfferForfeit
+      ? [{ __forfeit: true, id: "FORFEIT (no legal moves / global-stuck)" }]
+      : (moves || []);
+
+    displayedMoves = effectiveMoves;
+
     movesBodyEl.innerHTML = "";
-    for (let i=0;i<moves.length;i++){
-      const m = moves[i];
+    for (let i=0;i<effectiveMoves.length;i++){
+      const m = effectiveMoves[i];
       const tr = document.createElement("tr");
       tr.className = "clickable";
       tr.onclick = () => { moveIndexEl.value = String(i); syncUI(); };
@@ -744,10 +769,14 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
       tr.appendChild(tdIdx);
       tr.appendChild(tdMove);
       movesBodyEl.appendChild(tr);
-    }
+      return effectiveMoves;
+}
+
+    // Return the effective list so callers can keep lastMoves in sync with what we render.
+    return effectiveMoves;
   }
 
-  function setAutoFetchUi(){
+function setAutoFetchUi(){
     const can = joined && Array.isArray(pendingDiceUI) && pendingDiceUI.length > 0;
     autoFetchLinkEl.classList.toggle("disabled", !can);
     autoFetchStateEl.textContent = autoFetch ? "(on)" : "(off)";
@@ -820,7 +849,7 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
       pendingDiceUI = [];
       selectedPendingIdx = 0;
       lastMoves = [];
-      renderMoves([]);
+      displayedMoves = lastMoves = renderMoves([]);
       moveIndexEl.value = "";
     }
   }
@@ -905,7 +934,7 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
 
     const idx = Number(moveIndexEl.value);
     const canResolve = joined && Array.isArray(pendingDiceUI) && pendingDiceUI.length > 0;
-    btnMoveEl.disabled = !(canResolve && Number.isFinite(idx) && idx>=0 && idx<lastMoves.length);
+    btnMoveEl.disabled = !(canResolve && Number.isFinite(idx) && idx>=0 && idx<displayedMoves.length);
 
     btnClearMovesEl.disabled = !joined;
 
@@ -928,7 +957,14 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
 
   function sendRaw(obj){
     if (!ws || ws.readyState !== 1) return;
-    ws.send(JSON.stringify(obj));
+    // Defensive: never allow sending a raw string (it becomes a JSON string on the server).
+    if (!obj || typeof obj !== "object" || typeof obj.type !== "string"){
+      addErr("CLIENT_BAD_SEND: refusing to send non-object message: " + String(obj));
+      return;
+    }
+    const payload = JSON.stringify(obj);
+    ws.send(payload);
+    addLine("[SEND] " + payload);
   }
 
   function requestMovesForSelectedPendingDie(){
@@ -1009,7 +1045,7 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
         pendingDiceUI = [];
         selectedPendingIdx = 0;
         lastMoves = [];
-        renderMoves([]);
+        displayedMoves = lastMoves = renderMoves([]);
         moveIndexEl.value = "";
         renderPendingDiceList();
 
@@ -1078,7 +1114,7 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
         pendingDiceUI = [];
         selectedPendingIdx = 0;
         lastMoves = [];
-        renderMoves([]);
+        displayedMoves = lastMoves = renderMoves([]);
         moveIndexEl.value = "";
       }
 
@@ -1129,7 +1165,8 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
       }
 
       lastMoves = msg.moves || [];
-      renderMoves(lastMoves);
+      // Render moves, with optional synthetic global-stuck "FORFEIT" action when the selected die has no legal moves.
+      lastMoves = lastMoves = renderMoves(lastMoves);
       renderPendingDiceList();
 
       const d = (Array.isArray(msg.dice) && msg.dice.length === 1) ? msg.dice[0] : undefined;
@@ -1174,7 +1211,7 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
 
       // Always clear stale moves immediately after a successful move.
       lastMoves = [];
-      renderMoves([]);
+      displayedMoves = lastMoves = renderMoves([]);
       moveIndexEl.value = "";
 
       // Update turn fields from moveResult (prefer response.result.turn)
@@ -1242,7 +1279,7 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
       pendingDiceUI = [];
       selectedPendingIdx = 0;
       lastMoves = [];
-      renderMoves([]);
+      displayedMoves = lastMoves = renderMoves([]);
       renderPendingDiceList();
       addWarn("disconnected");
       lastAction = "disconnected";
@@ -1371,7 +1408,7 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
     pendingDiceUI = [];
     selectedPendingIdx = 0;
     lastMoves = [];
-    renderMoves([]);
+    displayedMoves = lastMoves = renderMoves([]);
     moveIndexEl.value = "";
     renderPendingDiceList();
 
@@ -1402,7 +1439,7 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
 
     // Clear stale moves as we begin a new resolve set.
     lastMoves = [];
-    renderMoves([]);
+    displayedMoves = lastMoves = renderMoves([]);
     moveIndexEl.value = "";
 
     sendRaw({ type: "roll", actorId, dice });
@@ -1423,20 +1460,38 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
     const actorId = (actorIdEl.value || "").trim();
     const idx = Number(moveIndexEl.value);
     if (!actorId) return;
-    if (!Number.isFinite(idx) || idx < 0 || idx >= lastMoves.length) return;
+    if (!Number.isFinite(idx) || idx < 0 || idx >= displayedMoves.length) return;
     if (!Array.isArray(pendingDiceUI) || pendingDiceUI.length === 0) return;
 
     const die = pendingDiceUI[Math.max(0, Math.min(selectedPendingIdx, pendingDiceUI.length-1))];
 
     // Always spend exactly one selected die.
-    sendRaw({ type: "move", actorId, dice: [die], move: lastMoves[idx] });
+    const selectedMove = displayedMoves[idx];
+
+    // Synthetic "forfeit" move (global-stuck acknowledgement).
+    if (selectedMove && typeof selectedMove === "object" && selectedMove.__forfeit === true){
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: "forfeitPendingDie", actorId }));
+      }
+      lastAction = "forfeitPendingDie (global-stuck)";
+      // Clear stale moves immediately; server will stateSync.
+      lastMoves = [];
+      displayedMoves = lastMoves = renderMoves([]);
+      moveIndexEl.value = "";
+      syncUI();
+      return;
+    }
+
+    // Always spend exactly one selected die.
+    sendRaw({ type: "move", actorId, dice: [die], move: selectedMove });
+
     lastAction = "move idx=" + idx + " die=" + String(die);
     syncUI();
   };
 
   btnClearMovesEl.onclick = () => {
     lastMoves = [];
-    renderMoves([]);
+    displayedMoves = lastMoves = renderMoves([]);
     moveIndexEl.value = "";
     lastAction = "cleared moves";
     syncUI();
@@ -1581,6 +1636,8 @@ function htmlBoard(): string {
 
   function sendRaw(obj){
     if (!ws || ws.readyState !== 1) return;
+    // Always send a JSON object. (Server rejects raw strings.)
+    if (typeof obj === "string") obj = { type: obj };
     ws.send(JSON.stringify(obj));
   }
 

@@ -341,9 +341,42 @@ case "roll": {
   // Non-team play: roller controls the dice immediately (backward compatible behavior).
   const moves = legalMoves(state.game as any, rollerId as any, dice as any) as any[];
 
-  // Auto-pass when no legal moves.
+  // No-move contract (external dice):
+  // - Always emit legalMoves (even if empty) after a roll.
+  // - Require explicit client acknowledgement via forfeitPendingDie to forfeit/pass when empty.
   // Invariant K: the turn must NOT pass while banked extra dice remain.
   if (moves.length === 0) {
+    const dicePolicy = String((state.turn as any)?.dicePolicy ?? "");
+    const isExternalDice = dicePolicy === "external";
+    const requiresNoMoveAck = isExternalDice && (((state.turn as any)?.noMoveAck === true) || (((state.game as any)?.turn?.noMoveAck) === true));
+
+    if (requiresNoMoveAck) {
+      const nextTurn: TurnInfo = {
+        ...state.turn,
+        nextActorId: rollerId,
+        awaitingDice: false,
+      };
+
+      const nextState: SessionState = {
+        ...state,
+        turn: nextTurn,
+        pendingDice: dice.map((v) => ({ value: v, controllerId: rollerId })),
+        actingActorId: rollerId,
+        bankedDice: bankedAfter,
+      };
+
+      const turnForMsg: any = { ...nextTurn };
+      if (typeof bankedAfter === "number" && bankedAfter > 0) {
+        turnForMsg.bankedDice = bankedAfter;
+      }
+
+      return {
+        nextState,
+        serverMessage: ({ ...(mkLegalMoves(roomCode, rollerId, dice, moves, reqId) as any), turn: turnForMsg } as any),
+      };
+    }
+
+    // Backward-compatible auto-pass (non-external dice policy).
     const nextActorId = bankedAfter > 0 ? rollerId : computeNextActorId(state.game as any, rollerId);
     const nextTurn: TurnInfo = {
       ...state.turn,
