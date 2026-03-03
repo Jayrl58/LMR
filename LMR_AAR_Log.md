@@ -136,36 +136,84 @@ using localhost:8788 console and multiple browser sessions.
 
 ### What Was Verified
 
-- Double-dice sequencing with roll `[1,2]` behaves deterministically.
-- Banked die behavior confirmed (1 and 6 bank one die).
-- Pending dice must resolve before roll (`BAD_TURN_STATE` enforced).
-- `NOT_YOUR_TURN` enforcement confirmed.
-- Enter-on-1 from base validated.
-- Correct turn retention after partial resolution.
-- Correct turn advance after full resolution.
-- `legalMoves` payload structure confirmed to include:
-  - actorId
-  - dice array
-  - active die value
-  - moves list
-  - turn snapshot
-- `turn` payload includes `pendingDice` and `bankedDice` when applicable.
+-   Double-dice sequencing with roll `[1,2]` behaves deterministically.
+-   Banked die behavior confirmed (1 and 6 bank one die).
+-   Pending dice must resolve before roll (`BAD_TURN_STATE` enforced).
+-   `NOT_YOUR_TURN` enforcement confirmed.
+-   Enter-on-1 from base validated.
+-   Correct turn retention after partial resolution.
+-   Correct turn advance after full resolution.
+-   `legalMoves` payload structure confirmed to include:
+    -   actorId
+    -   dice array
+    -   active die value
+    -   moves list
+    -   turn snapshot
+-   `turn` payload includes `pendingDice` and `bankedDice` when
+    applicable.
 
 ### Observed Friction
 
-- Window context confusion (prototype vs console vs multiple clients).
-- Intermittent “No legalMoves received yet” states during external dice testing.
-- Actor claim switching (p0/p1) not visually obvious in console UI.
+-   Window context confusion (prototype vs console vs multiple clients).
+-   Intermittent "No legalMoves received yet" states during external
+    dice testing.
+-   Actor claim switching (p0/p1) not visually obvious in console UI.
 
 ### Technical Observations
 
-- Server behavior appears internally consistent when correct actor and
-  window context are used.
-- Intermittent missing `legalMoves` likely UI handling rather than engine emission.
-- No engine regressions detected.
-- Server↔UI contract not yet formally documented.
+-   Server behavior appears internally consistent when correct actor and
+    window context are used.
+-   Intermittent missing `legalMoves` likely UI handling rather than
+    engine emission.
+-   No engine regressions detected.
+-   Server↔UI contract not yet formally documented.
 
 ### Next Focus
 
-Isolate and deterministically reproduce intermittent missing `legalMoves`
-in external dice flow to confirm whether issue is emission-layer or UI-layer.
+Isolate and deterministically reproduce intermittent missing
+`legalMoves` in external dice flow to confirm whether issue is
+emission-layer or UI-layer.
+
+------------------------------------------------------------------------
+
+## AAR Entry --- WS Forfeit Flow Stabilization Session
+
+### Technical Findings
+
+**WS Payload Shape Issue --- Resolved** - Previous
+`BAD_MESSAGE type=forfeitPendingDie typeof=string` error confirmed and
+corrected. - Verified via DevTools WebSocket frames that outgoing
+payload is proper JSON object:
+`{ "type": "forfeitPendingDie", "actorId": "p0" }` - Server now responds
+with `stateSync`, not `error`.
+
+**Forfeit Flow Behavior --- Verified** Observed sequence: 1.
+`roll [2,3]` 2. `legalMoves` empty (die 2) 3. `getLegalMoves` for die 3
+4. `legalMoves` empty (die 3) 5. `forfeitPendingDie` 6. `stateSync`
+advancing turn to `p1`
+
+-   Global-stuck acknowledgement path functioning.
+-   Turn advancement confirmed.
+-   No residual pendingDice state after forfeit.
+
+### Process Observations
+
+**Reproduction Before Modification** - At least one iteration attempted
+fixes without confirmed reproduction. - Reinforced workflow rule:
+Reproduce → Confirm → Then Modify.
+
+**WebSocket-First Debugging** - Debugging became deterministic once
+DevTools WS Frames were used from the start. - Future debugging
+protocol: always verify actual outgoing WS payload before assuming
+server fault.
+
+### Current Stability Assessment
+
+Stable: - wsServer transport layer - handleMessage forfeit handling -
+httpConsole message shape - Turn advancement after global-stuck
+
+Deferred / UX Clarity: - Synthetic forfeit row visibility clarity -
+Explicit pending-dice visual indicator - Optional outgoing WS payload
+echo panel in UI
+
+------------------------------------------------------------------------
