@@ -217,3 +217,61 @@ Explicit pending-dice visual indicator - Optional outgoing WS payload
 echo panel in UI
 
 ------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+## 2026-03-04 --- Console Validation and Rendering Fix
+
+### Context
+
+During manual console validation of `legalMoves` behavior, the engine
+appeared to be producing incomplete move lists in the HTTP console UI.
+
+### Observation
+
+Server logs and raw WS payloads confirmed the engine was emitting the
+full `legalMoves` array.\
+However, the **Moves table in the HTTP console displayed only the first
+move**, creating the false appearance of an engine legality bug.
+
+### Root Cause
+
+Move rendering logic inside `httpConsole.ts` filtered/truncated the
+`legalMoves` array before populating the Moves table.
+
+### Resolution
+
+Replaced the HTTP console rendering logic so the full `legalMoves` array
+is rendered.
+
+### Verification
+
+Roll `[6,1]` now correctly produces:
+
+    enter:p0:0:6
+    enter:p0:1:6
+    enter:p0:2:6
+    enter:p0:3:6
+
+followed by:
+
+    enterCenter:p0:0:1
+    enter:p0:1:1
+    enter:p0:2:1
+    enter:p0:3:1
+    adv:p0:0:1
+
+Server payload and console display now match.
+
+### Additional Diagnostic Work
+
+Temporary emission logging added to `handleMessage.ts` to confirm when
+`legalMoves` messages are generated and emitted.
+
+### Outcome
+
+-   Confirmed **server move generation is correct**
+-   Fixed **HTTP console rendering bug**
+-   Verified **M5 milestone completion**
+-   Updated **Startup_Milestone_Frame.md**
+-   Repository committed and pushed cleanly
