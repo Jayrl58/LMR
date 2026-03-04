@@ -87,6 +87,41 @@ function mkLegalMoves(
   return withReqId({ type: "legalMoves", roomCode, actorId, dice, die, moves } as any, reqId);
 }
 
+function logLegalMovesEmission(
+  kind: "roll" | "getLegalMoves",
+  roomCode: string,
+  actorId: string,
+  dice: number[],
+  moves: unknown[],
+  state: SessionState,
+  reqId?: string
+): void {
+  // Opt-in debug log to avoid noisy test output by default.
+  // Enable via: set LMR_LEGALMOVES_LOG=1 in the server environment.
+  if (process.env.LMR_LEGALMOVES_LOG !== "1") return;
+
+  const payload = {
+    ts: new Date().toISOString(),
+    kind,
+    roomCode,
+    actorId,
+    dice,
+    moveCount: Array.isArray(moves) ? moves.length : 0,
+    stateHash: hashState(state.game),
+    turn: {
+      nextActorId: state.turn?.nextActorId,
+      awaitingDice: (state.turn as any)?.awaitingDice,
+      pendingDiceCount: Array.isArray(state.pendingDice) ? state.pendingDice.length : 0,
+      bankedDice: typeof (state as any).bankedDice === "number" ? (state as any).bankedDice : 0,
+    },
+    reqId,
+  };
+
+  // Single-line JSON for grep-friendly diagnostics.
+  console.log("[LMR] legalMoves.emit", JSON.stringify(payload));
+}
+
+
 function mkMoveResult(roomCode: string, response: any, reqId?: string): ServerMessage {
   return withReqId({ type: "moveResult", roomCode, response } as any, reqId);
 }
@@ -370,6 +405,9 @@ case "roll": {
         turnForMsg.bankedDice = bankedAfter;
       }
 
+      logLegalMovesEmission("roll", roomCode, rollerId, dice, moves, nextState, reqId);
+
+
       return {
         nextState,
         serverMessage: ({ ...(mkLegalMoves(roomCode, rollerId, dice, moves, reqId) as any), turn: turnForMsg } as any),
@@ -412,6 +450,9 @@ case "roll": {
   if (typeof bankedAfter === "number" && bankedAfter > 0) {
     turnForMsg.bankedDice = bankedAfter;
   }
+
+  logLegalMovesEmission("roll", roomCode, rollerId, dice, moves, nextState, reqId);
+
 
   return {
     nextState,
@@ -683,6 +724,8 @@ case "getLegalMoves": {
     }
 
     const moves = legalMoves(state.game as any, actorId as any, [dieValue] as any) as any[];
+    logLegalMovesEmission("getLegalMoves", roomCode, actorId, [dieValue], moves, state, reqId);
+
     return {
       nextState: state,
       serverMessage: mkLegalMoves(roomCode, actorId, [dieValue], moves, reqId),
@@ -702,6 +745,8 @@ case "getLegalMoves": {
   }
 
   const moves = legalMoves(state.game as any, actorId as any, dice as any) as any[];
+  logLegalMovesEmission("getLegalMoves", roomCode, actorId, dice, moves, state, reqId);
+
   return {
     nextState: state,
     serverMessage: mkLegalMoves(roomCode, actorId, dice, moves, reqId),
