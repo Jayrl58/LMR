@@ -769,8 +769,7 @@ const btnApplyLobbyConfigEl = document.getElementById("btnApplyLobbyConfig");
       tr.appendChild(tdIdx);
       tr.appendChild(tdMove);
       movesBodyEl.appendChild(tr);
-      return effectiveMoves;
-}
+    }
 
     // Return the effective list so callers can keep lastMoves in sync with what we render.
     return effectiveMoves;
