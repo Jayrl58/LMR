@@ -275,3 +275,49 @@ Temporary emission logging added to `handleMessage.ts` to confirm when
 -   Verified **M5 milestone completion**
 -   Updated **Startup_Milestone_Frame.md**
 -   Repository committed and pushed cleanly
+
+## 2026-03-05 --- Minimal UI Stabilization (WS Debug Console Parity)
+
+### Context
+
+The Vite-based minimal UI (`ui/`) was being used as a lightweight WS client
+for engine validation, but several missing controls and message-shape
+mismatches forced repeated DevTools copy/paste and made it hard to know
+what the client was actually doing.
+
+### Observations
+
+- WebSocket server is reachable on `ws://127.0.0.1:8787` (8788 is not the WS endpoint for this client).
+- Refreshing the UI creates/joins a *new room*, which can make "role"/seat expectations appear to reset.
+- The UI could connect/hello/join, but **startGame** and **getLegalMoves**
+  were sending invalid payload shapes (server returned `BAD_MESSAGE`).
+- After a successful roll and move, the UI did not reliably surface the
+  current "pending dice" state, leading to confusion when roll became disabled.
+
+### Changes / Resolution
+
+- Minimal UI upgraded from "buttons only" to a small debug-oriented panel:
+  - displays WS URL used
+  - shows raw last message
+  - maintains a message log
+  - shows Turn summary (`nextActorId`, `awaitingDice`, `bankedDice`, etc.)
+  - renders the current move list as clickable actions
+- Fixed **startGame** client payload to match server expectations
+  (player count + options, not a string/roomCode-only shape).
+- Removed/avoided the invalid **getLegalMoves** request shape; the
+  supported flow is **roll → server returns legalMoves → pick a move**.
+
+### Verification
+
+End-to-end validation succeeded in the minimal UI:
+
+- connect → hello → joinRoom → startGame → `stateSync`
+- roll `[1]` → `legalMoves` list populated
+- selecting `enter` / `advance` moves → `moveResult` OK
+- follow-up `legalMoves` updates received and displayed
+
+### Notes / Follow-ups
+
+- Keep the minimal UI as the preferred debug client (reduces DevTools copy/paste).
+- Consider adding an explicit "roomCode" input + "join existing room" behavior
+  to support multi-client testing (p0/p1) without relying on refresh/new-room creation.
