@@ -130,6 +130,41 @@ Result:
 - UI correctly reflects turn state transitions
 - Full roll → move → roll loop verified
 
+
+------------------------------------------------------------------------
+
+POST-COMPLETE VALIDATION — 2026-03-06 (Minimal UI Dice Lifecycle Validation)
+
+Using the LMR Minimal Debug UI, the authoritative server turn engine was
+validated for the full double‑dice + bank lifecycle.
+
+Verified behavior:
+
+- pendingDice created correctly from roll
+- pendingDice resolve one die at a time
+- bankedDice persist after partial resolution
+- bank cash‑out roll occurs once pendingDice are exhausted
+- bank recalculates from the cash‑out roll values
+- roll rejected if pendingDice still exist
+- roll rejected if roll size does not match bankedDice
+- turn advances only when pendingDice = 0 and bankedDice = 0
+
+Defect discovered during validation:
+
+- `bankedDice` was not included in `moveResult.turn`, preventing the UI
+  from displaying owed dice after a move.
+
+Resolution:
+
+- handleMessage.ts updated so `moveResult.turn` includes `bankedDice`
+  during both intermediate and terminal resolution states.
+
+Result:
+
+- Server turn engine verified correct for the double‑dice + bank lifecycle
+  using the Minimal Debug UI client.
+
+
 ------------------------------------------------------------------------
 
 RESUME ANCHOR — Next Session Focus

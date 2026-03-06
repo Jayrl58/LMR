@@ -321,3 +321,78 @@ End-to-end validation succeeded in the minimal UI:
 - Keep the minimal UI as the preferred debug client (reduces DevTools copy/paste).
 - Consider adding an explicit "roomCode" input + "join existing room" behavior
   to support multi-client testing (p0/p1) without relying on refresh/new-room creation.
+
+
+------------------------------------------------------------------------
+
+## 2026-03-06 --- Minimal UI Dice Lifecycle Validation
+
+### Context
+
+Validation session focused on the LMR Minimal Debug UI as a live client for
+the authoritative server turn engine, specifically the complete
+double-dice + bank lifecycle in external-dice mode.
+
+### What Was Verified
+
+- Opening double-dice roll `[1,6]` accepted correctly by the WS contract.
+- UI can inspect pending dice one-at-a-time using `getLegalMoves` for the
+  selected die.
+- Spending one pending die preserves:
+  - the remaining pending die
+  - `bankedDice`
+  - same-player turn ownership
+- Spending the final pending die correctly transitions to:
+  - `pendingDice = none`
+  - `bankedDice > 0`
+  - `awaitingDice = true`
+  - same-player next roll
+- Bank cash-out roll correctly requires **exactly N dice** where N equals
+  current `bankedDice`.
+- Cash-out roll consumes the previous bank and recalculates a new bank
+  from any rolled `1` / `6` results.
+- Turn advances only when both:
+  - `pendingDice = 0`
+  - `bankedDice = 0`
+
+### Defect Identified
+
+`bankedDice` was preserved internally in server session state, but was not
+being emitted in `moveResult.turn` payloads. This caused the Minimal Debug UI
+to incorrectly display zero bank after move resolution even when extra dice
+were still owed.
+
+### Resolution
+
+`handleMessage.ts` was updated so `moveResult.turn` includes `bankedDice`
+in both:
+
+- intermediate resolution states (pending dice still exist)
+- terminal resolution states (pending dice exhausted, bank still owed)
+
+### UI/Debug Client Improvements
+
+The Minimal Debug UI was also improved during this session:
+
+- grouped control layout for better readability
+- pending-dice display and selection
+- selected-pending-die display
+- four-box debug panel layout:
+  - Turn
+  - Moves
+  - Raw Last Message
+  - Message Log
+
+### Outcome
+
+The Minimal Debug UI now correctly reflects the authoritative server model for:
+
+- pending dice lifecycle
+- bank preservation
+- bank cash-out roll behavior
+- exact banked roll-size enforcement
+- turn advance when pending and bank are exhausted
+
+This established the current Minimal Debug UI as a reliable client for
+continued M6 contract validation.
+

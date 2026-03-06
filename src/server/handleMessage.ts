@@ -929,7 +929,11 @@ case "move": {
           bankedDice: banked1,
         };
 
-        (response as any).turn = { ...nextTurn, pendingDice: normalized } as any;
+        const turnForResponse: any = { ...nextTurn, pendingDice: normalized };
+        if (typeof banked1 === "number" && banked1 > 0) {
+          turnForResponse.bankedDice = banked1;
+        }
+        (response as any).turn = turnForResponse;
         (response.result as any).turn = (response as any).turn;
 
         return {
@@ -979,7 +983,11 @@ case "move": {
       bankedDice: banked1,
     };
 
-    (response as any).turn = { ...nextTurn, pendingDice: undefined } as any;
+    const turnForResponse: any = { ...nextTurn, pendingDice: undefined };
+    if (typeof banked1 === "number" && banked1 > 0) {
+      turnForResponse.bankedDice = banked1;
+    }
+    (response as any).turn = turnForResponse;
     (response.result as any).turn = (response as any).turn;
 
     return {
