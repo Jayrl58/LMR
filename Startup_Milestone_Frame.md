@@ -6,7 +6,7 @@ Status: Console rendering validation added 2026-03-04
 Status: Minimal UI validation added 2026-03-05
 Status: UI rendering model definition added 2026-03-08
 
-------------------------------------------------------------------------
+---
 
 COMPLETE M1 — Engine Core (Authoritative Rules Engine)
 COMPLETE M2 — Server Authority Layer
@@ -24,41 +24,42 @@ COMPLETE OPT.KILLROLL — Optional Module — Kill-Roll Banking Hardening
 
 NOT_STARTED M6 — UI Integration & Presentation
 
-------------------------------------------------------------------------
+---
 
 POST-COMPLETE VALIDATION — 2026-03-02 (Server ↔ UI Contract Hardening)
 
 Validated runtime behavior (external dice mode, double-dice enabled):
 
-- Verified double-dice sequencing with roll [1,2]
-- Verified banked-die behavior (1 or 6 banks one die)
-- Verified enter-on-1 from base
-- Verified pendingDice roll gating (BAD_TURN_STATE enforced)
-- Verified NOT_YOUR_TURN enforcement
-- Verified correct turn retention after partial resolution
-- Verified correct turn advance after full resolution
-- Verified legalMoves payload includes:
-  - actorId
-  - dice array
-  - active die value
-  - moves list
-  - turn snapshot
-- Verified turn payload includes pendingDice and bankedDice when applicable
+* Verified double-dice sequencing with roll [1,2]
+* Verified banked-die behavior (1 or 6 banks one die)
+* Verified enter-on-1 from base
+* Verified pendingDice roll gating (BAD_TURN_STATE enforced)
+* Verified NOT_YOUR_TURN enforcement
+* Verified correct turn retention after partial resolution
+* Verified correct turn advance after full resolution
+* Verified legalMoves payload includes:
 
-------------------------------------------------------------------------
+  * actorId
+  * dice array
+  * active die value
+  * moves list
+  * turn snapshot
+* Verified turn payload includes pendingDice and bankedDice when applicable
+
+---
 
 POST-COMPLETE VALIDATION — 2026-03-04 (HTTP Console Rendering)
 
 Issue identified during console validation session:
 
-- Server emitted full legalMoves payload correctly
-- HTTP console Moves table rendered only the first move
-- Root cause: UI filtering/truncation inside HTTP console move rendering
+* Server emitted full legalMoves payload correctly
+* HTTP console Moves table rendered only the first move
+* Root cause: UI filtering/truncation inside HTTP console move rendering
 
 Resolution:
 
-- Replaced httpConsole.ts rendering logic
-- Console now displays complete legalMoves list
+* Replaced httpConsole.ts rendering logic
+* Console now displays complete legalMoves list
 
 Verified with roll [6,1] producing:
 
@@ -77,11 +78,11 @@ adv:p0:0:1
 
 Result:
 
-- Server legalMoves generation confirmed correct
-- HTTP console move rendering confirmed correct
-- Prior "UI does not consistently render legalMoves" issue resolved
+* Server legalMoves generation confirmed correct
+* HTTP console move rendering confirmed correct
+* Prior "UI does not consistently render legalMoves" issue resolved
 
-------------------------------------------------------------------------
+---
 
 POST-COMPLETE VALIDATION — 2026-03-05 (Minimal UI Debug Client)
 
@@ -90,8 +91,8 @@ WebSocket contract operates correctly outside the HTTP console.
 
 Environment:
 
-- WebSocket server: ws://127.0.0.1:8787
-- HTTP console: http://127.0.0.1:8788
+* WebSocket server: ws://127.0.0.1:8787
+* HTTP console: http://127.0.0.1:8788
 
 Verified interaction loop:
 
@@ -106,12 +107,12 @@ moveResult
 
 Observed behavior:
 
-- roll correctly produces legalMoves payload
-- legalMoves includes actorId, dice, die, moves list, and turn snapshot
-- bankedDice correctly appears when rolling 1
-- executing a move consumes the banked die
-- moveResult returns authoritative turn state
-- UI returns to awaitingDice:true when dice resolution completes
+* roll correctly produces legalMoves payload
+* legalMoves includes actorId, dice, die, moves list, and turn snapshot
+* bankedDice correctly appears when rolling 1
+* executing a move consumes the banked die
+* moveResult returns authoritative turn state
+* UI returns to awaitingDice:true when dice resolution completes
 
 Example verified sequence:
 
@@ -127,11 +128,11 @@ awaitingDice:true
 
 Result:
 
-- Server contract confirmed stable with independent UI client
-- UI correctly reflects turn state transitions
-- Full roll → move → roll loop verified
+* Server contract confirmed stable with independent UI client
+* UI correctly reflects turn state transitions
+* Full roll → move → roll loop verified
 
-------------------------------------------------------------------------
+---
 
 POST-COMPLETE VALIDATION — 2026-03-06 (Minimal UI Dice Lifecycle Validation)
 
@@ -140,31 +141,31 @@ validated for the full double-dice + bank lifecycle.
 
 Verified behavior:
 
-- pendingDice created correctly from roll
-- pendingDice resolve one die at a time
-- bankedDice persist after partial resolution
-- bank cash-out roll occurs once pendingDice are exhausted
-- bank recalculates from the cash-out roll values
-- roll rejected if pendingDice still exist
-- roll rejected if roll size does not match bankedDice
-- turn advances only when pendingDice = 0 and bankedDice = 0
+* pendingDice created correctly from roll
+* pendingDice resolve one die at a time
+* bankedDice persist after partial resolution
+* bank cash-out roll occurs once pendingDice are exhausted
+* bank recalculates from the cash-out roll values
+* roll rejected if pendingDice still exist
+* roll rejected if roll size does not match bankedDice
+* turn advances only when pendingDice = 0 and bankedDice = 0
 
 Defect discovered during validation:
 
-- `bankedDice` was not included in `moveResult.turn`, preventing the UI
+* `bankedDice` was not included in `moveResult.turn`, preventing the UI
   from displaying owed dice after a move.
 
 Resolution:
 
-- handleMessage.ts updated so `moveResult.turn` includes `bankedDice`
+* handleMessage.ts updated so `moveResult.turn` includes `bankedDice`
   during both intermediate and terminal resolution states.
 
 Result:
 
-- Server turn engine verified correct for the double-dice + bank lifecycle
+* Server turn engine verified correct for the double-dice + bank lifecycle
   using the Minimal Debug UI client.
 
-------------------------------------------------------------------------
+---
 
 POST-COMPLETE VALIDATION — 2026-03-08 (UI Rendering Model Definition)
 
@@ -173,17 +174,17 @@ presentation model for board pieces and board spaces was defined.
 
 Peg Rendering Model:
 
-- Pegs render as solid cylinders with flat circular tops
-- Peg fully replaces the board space when present
-- Hole is not rendered beneath a peg
-- Peg style uses subtle top highlight and soft side gradient
-- Peg outline remains minimal to preserve color clarity
+* Pegs render as solid cylinders with flat circular tops
+* Peg fully replaces the board space when present
+* Hole is not rendered beneath a peg
+* Peg style uses subtle top highlight and soft side gradient
+* Peg outline remains minimal to preserve color clarity
 
 Hole Rendering Model:
 
-- Empty board spaces render as shaded circular depressions
-- No visible rim or border is drawn
-- Hole depth indicated only by radial interior shading
+* Empty board spaces render as shaded circular depressions
+* No visible rim or border is drawn
+* Hole depth indicated only by radial interior shading
 
 Rendering Rule:
 
@@ -216,31 +217,42 @@ Coral
 
 Status:
 
-- Peg geometry model defined
-- Board hole rendering model defined
-- Candidate peg color palette defined
+* Peg geometry model defined
+* Board hole rendering model defined
+* Candidate peg color palette defined
 
 These assets remain provisional pending validation on a full board
 layout during M6 UI development.
 
 Result:
 
-- Foundational visual design for the board layer established
-- Ready to proceed into M6 UI Integration & Presentation
+* Foundational visual design for the board layer established
+* Ready to proceed into M6 UI Integration & Presentation
 
-------------------------------------------------------------------------
+---
 
-RESUME ANCHOR — Next Session Focus
+RESTART ANCHOR — Next Session Focus
 
-Primary Objective: Begin M6 — UI Integration & Presentation.
+Current Phase
+Phase 6 — Graphical UI Implementation
 
-Initial focus areas:
+Immediate Starting Task
+Begin board renderer prototype and peg visualization.
 
-- Define stable UI ↔ server message contract
-- Determine UI state model for pendingDice / bankedDice
-- Establish deterministic move presentation rules
-- Begin replacing prototype console behaviors with production UI patterns
-- Begin board rendering prototype using peg/hole rendering model
+Initial Targets
 
-Stop Condition: UI layer can reliably consume server contract and
-present legalMoves without filtering or ambiguity.
+* Establish board coordinate system
+* Render board holes (no border ring, interior shading only)
+* Integrate cylindrical peg visual prototype
+* Implement peg color binding to player color
+
+Primary Files Expected
+
+ui/src/App.tsx
+ui/src/board/*
+ui/src/peg/*
+
+Stop Condition
+
+UI layer can reliably consume the server contract and present
+legalMoves without filtering or ambiguity.
