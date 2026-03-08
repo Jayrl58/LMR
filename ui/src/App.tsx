@@ -10,6 +10,11 @@ type PendingDieInfo =
       [k: string]: any;
     };
 
+type PendingDieUI = {
+  value: number;
+  controllerId: string | null;
+};
+
 type TurnState = {
   nextActorId?: string;
   currentPlayerId?: string;
@@ -34,8 +39,7 @@ export default function App() {
   const [playerId, setPlayerId] = useState<string>("p0");
   const [actorId, setActorId] = useState<string>("p0");
 
-  const [dieValue1, setDieValue1] = useState<number>(1);
-  const [dieValue2Input, setDieValue2Input] = useState<string>("");
+  const [rollInputs, setRollInputs] = useState<string[]>(["", ""]);
   const [lastDice, setLastDice] = useState<number[] | null>(null);
 
   const [turn, setTurn] = useState<TurnState>(null);
@@ -44,16 +48,13 @@ export default function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [lastMsg, setLastMsg] = useState<any>(null);
 
-  const [pendingDiceUI, setPendingDiceUI] = useState<number[]>([]);
   const [selectedPendingIdx, setSelectedPendingIdx] = useState<number>(0);
 
+  const [debugRollCountOverrideEnabled, setDebugRollCountOverrideEnabled] = useState(false);
+  const [debugRollCountOverrideValue, setDebugRollCountOverrideValue] = useState<string>("3");
+
   function extractTurn(msg: any): TurnState {
-    return (
-      msg?.turn ??
-      msg?.response?.turn ??
-      msg?.response?.result?.turn ??
-      null
-    );
+    return msg?.turn ?? msg?.response?.turn ?? msg?.response?.result?.turn ?? null;
   }
 
   function detectActorId(t: any): string | null {
@@ -64,28 +65,22 @@ export default function App() {
     return null;
   }
 
-  function normalizePendingDiceArray(raw: any): number[] {
+  function normalizePendingDice(raw: any): PendingDieUI[] {
     if (!Array.isArray(raw)) return [];
     return raw
       .map((pd) => {
-        if (typeof pd === "number" && Number.isFinite(pd)) return pd;
-        if (typeof pd?.value === "number" && Number.isFinite(pd.value)) return pd.value;
+        if (typeof pd === "number" && Number.isFinite(pd)) {
+          return { value: pd, controllerId: null };
+        }
+        if (typeof pd?.value === "number" && Number.isFinite(pd.value)) {
+          return {
+            value: pd.value,
+            controllerId: typeof pd?.controllerId === "string" ? pd.controllerId : null,
+          };
+        }
         return null;
       })
-      .filter((v): v is number => typeof v === "number");
-  }
-
-  function normalizePendingDiceFromTurn(t: any): number[] {
-    return normalizePendingDiceArray(t?.pendingDice);
-  }
-
-  function normalizePendingDiceFromMoveResult(msg: any): number[] {
-    return normalizePendingDiceArray(
-      msg?.response?.turn?.pendingDice ??
-      msg?.response?.result?.turn?.pendingDice ??
-      msg?.response?.result?.nextState?.pendingDice ??
-      msg?.nextState?.pendingDice
-    );
+      .filter((v): v is PendingDieUI => v != null);
   }
 
   function log(dir: LogEntry["dir"], msg: any) {
@@ -99,13 +94,6 @@ export default function App() {
       const detected = detectActorId(extractedTurn);
       if (detected) {
         setActorId(detected);
-      }
-
-      const serverPending = normalizePendingDiceFromTurn(extractedTurn);
-      if (serverPending.length > 0) {
-        setPendingDiceUI(serverPending);
-      } else if (extractedTurn.awaitingDice === true) {
-        setPendingDiceUI([]);
       }
     }
 
@@ -137,33 +125,13 @@ export default function App() {
     if (msg?.type === "legalMoves") {
       setMoves(Array.isArray(msg?.moves) ? msg.moves : []);
       if (Array.isArray(msg?.dice)) {
-        setLastDice(msg.dice);
-
-        const incomingDice = msg.dice.filter((d: any) => typeof d === "number" && Number.isFinite(d));
-        if (incomingDice.length > 0) {
-          setPendingDiceUI((prev) => {
-            if (prev.length === 0 || incomingDice.length > prev.length) return incomingDice;
-            return prev;
-          });
-        }
+        const dice = msg.dice.filter((d: any) => typeof d === "number" && Number.isFinite(d));
+        setLastDice(dice.length > 0 ? dice : null);
       }
     }
 
     if (msg?.type === "moveResult") {
       setMoves([]);
-
-      const nextPending = normalizePendingDiceFromMoveResult(msg);
-      if (nextPending.length > 0) {
-        setPendingDiceUI(nextPending);
-      } else {
-        setPendingDiceUI((prev) => {
-          if (prev.length === 0) return prev;
-          const idx = Math.max(0, Math.min(selectedPendingIdx, prev.length - 1));
-          const next = prev.slice();
-          next.splice(idx, 1);
-          return next;
-        });
-      }
     }
   }
 
@@ -230,7 +198,7 @@ export default function App() {
     safeSend({
       type: "joinRoom",
       roomCode: roomCodeInput.trim(),
-      claimPlayerId: "p0"
+      claimPlayerId: "p0",
     });
   }
 
@@ -240,31 +208,93 @@ export default function App() {
       playerCount: 2,
       options: {
         doubleDice: true,
-        killRoll: false
-      }
+        killRoll: false,
+      },
     });
   }
 
+  const pendingDiceUI = useMemo(() => {
+    if (!turn) return [];
+    if (turn.awaitingDice === true) return [];
+    return normalizePendingDice(turn.pendingDice);
+  }, [turn]);
+
+  const awaitingDice = turn?.awaitingDice === true;
+  const bankedDice = typeof turn?.bankedDice === "number" ? turn.bankedDice : undefined;
+  const realEligibleRollCount = bankedDice && bankedDice > 0 ? bankedDice : 2;
+
+  const debugOverrideCount = useMemo(() => {
+    const parsed = parseInt(debugRollCountOverrideValue.trim(), 10);
+    if (!Number.isInteger(parsed) || parsed < 1) return null;
+    return parsed;
+  }, [debugRollCountOverrideValue]);
+
+  const effectiveEligibleRollCount =
+    debugRollCountOverrideEnabled && debugOverrideCount != null
+      ? debugOverrideCount
+      : realEligibleRollCount;
+
+  const isUsingDebugRollOverride =
+    debugRollCountOverrideEnabled && debugOverrideCount != null && debugOverrideCount !== realEligibleRollCount;
+
+  useEffect(() => {
+    if (!awaitingDice) return;
+    setRollInputs((prev) => Array.from({ length: effectiveEligibleRollCount }, (_, idx) => prev[idx] ?? ""));
+  }, [awaitingDice, effectiveEligibleRollCount]);
+
   function buildDiceFromInputs(): number[] {
-    const firstDie = Number.isFinite(dieValue1) ? dieValue1 : 1;
-    const secondDieRaw = dieValue2Input.trim();
+    const trimmed = rollInputs.map((v) => v.trim());
 
-    if (secondDieRaw === "") {
-      return [firstDie];
+    if (isUsingDebugRollOverride) {
+      if (trimmed.length !== effectiveEligibleRollCount) return [];
+      const parsed = trimmed.map((v) => parseInt(v, 10));
+      if (parsed.some((n) => !Number.isInteger(n) || n < 1 || n > 6)) return [];
+      return parsed;
     }
 
-    const parsedSecondDie = parseInt(secondDieRaw, 10);
-    if (!Number.isFinite(parsedSecondDie)) {
-      return [firstDie];
+    if (bankedDice && bankedDice > 0) {
+      if (trimmed.length !== bankedDice) return [];
+      const parsed = trimmed.map((v) => parseInt(v, 10));
+      if (parsed.some((n) => !Number.isInteger(n) || n < 1 || n > 6)) return [];
+      return parsed;
     }
 
-    return [firstDie, parsedSecondDie];
+    const firstDieRaw = trimmed[0] ?? "";
+    if (firstDieRaw === "") return [];
+
+    const firstDie = parseInt(firstDieRaw, 10);
+    if (!Number.isInteger(firstDie) || firstDie < 1 || firstDie > 6) {
+      return [];
+    }
+
+    const secondRaw = trimmed[1] ?? "";
+    if (secondRaw === "") return [firstDie];
+
+    const secondDie = parseInt(secondRaw, 10);
+    if (!Number.isInteger(secondDie) || secondDie < 1 || secondDie > 6) {
+      return [];
+    }
+
+    return [firstDie, secondDie];
   }
 
-  const selectedPendingDie =
+  const rollPreview = useMemo(
+    () => buildDiceFromInputs(),
+    [rollInputs, bankedDice, isUsingDebugRollOverride, effectiveEligibleRollCount]
+  );
+
+  const canSubmitRoll =
+    awaitingDice &&
+    rollPreview.length > 0 &&
+    rollPreview.length === effectiveEligibleRollCount;
+
+  const selectedPending =
     pendingDiceUI.length > 0 && selectedPendingIdx >= 0 && selectedPendingIdx < pendingDiceUI.length
       ? pendingDiceUI[selectedPendingIdx]
       : null;
+
+  const selectedPendingDie = selectedPending?.value ?? null;
+  const selectedPendingActorId = selectedPending?.controllerId ?? turn?.nextActorId ?? actorId;
 
   useEffect(() => {
     if (pendingDiceUI.length === 0) {
@@ -276,13 +306,41 @@ export default function App() {
     }
   }, [pendingDiceUI, selectedPendingIdx]);
 
+  useEffect(() => {
+    if (awaitingDice || pendingDiceUI.length === 0 || selectedPendingDie == null) {
+      setMoves([]);
+    }
+  }, [awaitingDice, pendingDiceUI.length, selectedPendingDie]);
+
   function roll() {
     const dice = buildDiceFromInputs();
+    if (dice.length === 0) return;
+
     setLastDice(dice);
+    setMoves([]);
     safeSend({
       type: "roll",
       actorId,
-      dice
+      dice,
+    });
+
+    setRollInputs(Array.from({ length: effectiveEligibleRollCount }, () => ""));
+  }
+
+  function selectPendingDie(idx: number) {
+    const pd = pendingDiceUI[idx];
+    setSelectedPendingIdx(idx);
+    setMoves([]);
+
+    if (!pd) return;
+
+    const nextActorId = pd.controllerId ?? turn?.nextActorId ?? actorId;
+    setLastDice([pd.value]);
+
+    safeSend({
+      type: "getLegalMoves",
+      actorId: nextActorId,
+      dice: [pd.value],
     });
   }
 
@@ -292,8 +350,8 @@ export default function App() {
       setLastDice(dice);
       safeSend({
         type: "getLegalMoves",
-        actorId,
-        dice
+        actorId: selectedPendingActorId,
+        dice,
       });
       return;
     }
@@ -303,14 +361,14 @@ export default function App() {
     safeSend({
       type: "getLegalMoves",
       actorId,
-      dice
+      dice,
     });
   }
 
   function forfeitPendingDie() {
     safeSend({
       type: "forfeitPendingDie",
-      actorId
+      actorId,
     });
   }
 
@@ -320,17 +378,19 @@ export default function App() {
         ? [selectedPendingDie]
         : lastDice ?? buildDiceFromInputs();
 
+    const moveActorId =
+      pendingDiceUI.length > 0 && selectedPendingDie != null
+        ? selectedPendingActorId
+        : actorId;
+
     setLastDice(dice);
     safeSend({
       type: "move",
-      actorId,
+      actorId: moveActorId,
       dice,
-      move
+      move,
     });
   }
-
-  const awaitingDice = turn?.awaitingDice === true;
-  const bankedDice = typeof turn?.bankedDice === "number" ? turn.bankedDice : undefined;
 
   const statusLine = useMemo(() => {
     const parts: string[] = [];
@@ -346,22 +406,22 @@ export default function App() {
     borderRadius: 8,
     padding: 12,
     background: "#f8f8f8",
-    minWidth: 0
+    minWidth: 0,
   };
 
-  const topGridStyle: React.CSSProperties = {
+  const gameplayGridStyle: React.CSSProperties = {
     display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(340px, 1fr))",
-    gap: 12,
-    alignItems: "start"
-  };
-
-  const debugGridStyle: React.CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(340px, 1fr))",
+    gridTemplateColumns: "minmax(340px, 1fr) minmax(340px, 1fr)",
     gap: 12,
     alignItems: "start",
-    marginTop: 12
+  };
+
+  const diagGridStyle: React.CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: "minmax(340px, 1fr) minmax(340px, 1fr)",
+    gap: 12,
+    alignItems: "start",
+    marginTop: 12,
   };
 
   const preStyle: React.CSSProperties = {
@@ -369,16 +429,31 @@ export default function App() {
     maxHeight: 320,
     overflow: "auto",
     whiteSpace: "pre-wrap",
-    overflowWrap: "anywhere"
+    overflowWrap: "anywhere",
   };
 
   return (
     <div style={{ fontFamily: "monospace", padding: 16 }}>
       <h2>LMR Minimal Debug UI</h2>
 
-      <div style={topGridStyle}>
+      <div style={gameplayGridStyle}>
         <section style={cardStyle}>
-          <h3 style={{ marginTop: 0 }}>Connection / Session</h3>
+          <h3 style={{ marginTop: 0 }}>Turn Status</h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div>Connected: {connected ? "true" : "false"}</div>
+            <div>Room: {roomCode || "(none)"}</div>
+            <div>ClientId: {clientId || "(none)"}</div>
+            <div>PlayerId: {playerId || "(none)"}</div>
+            <div>ActorId: {actorId || "(none)"}</div>
+            <div>awaitingDice: {awaitingDice ? "true" : "false"}</div>
+            <div>bankedDice: {bankedDice === undefined ? "(none)" : String(bankedDice)}</div>
+            <div>eligibleRollCount: {awaitingDice ? String(effectiveEligibleRollCount) : "(n/a)"}</div>
+            <div>LastDice: {lastDice ? JSON.stringify(lastDice) : "null"}</div>
+          </div>
+        </section>
+
+        <section style={cardStyle}>
+          <h3 style={{ marginTop: 0 }}>Room / Session Controls</h3>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <label style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span>WS URL:</span>
@@ -393,16 +468,6 @@ export default function App() {
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button onClick={connect} disabled={connected}>Connect</button>
               <button onClick={disconnect} disabled={!connected}>Disconnect</button>
-            </div>
-
-            <div style={{ opacity: 0.85 }}>{statusLine}</div>
-          </div>
-        </section>
-
-        <section style={cardStyle}>
-          <h3 style={{ marginTop: 0 }}>Room / Game Setup</h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button onClick={hello} disabled={!connected}>Hello</button>
               <button onClick={joinRoom} disabled={!connected}>Join Room</button>
               <button onClick={startGame} disabled={!connected}>Start Game</button>
@@ -418,12 +483,7 @@ export default function App() {
                 spellCheck={false}
               />
             </label>
-          </div>
-        </section>
 
-        <section style={cardStyle}>
-          <h3 style={{ marginTop: 0 }}>Turn / Dice Controls</h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <label style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span>ActorId:</span>
               <select value={actorId} onChange={(e) => setActorId(e.target.value)}>
@@ -432,46 +492,63 @@ export default function App() {
               </select>
             </label>
 
-            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span>Die 1:</span>
-                <input
-                  value={String(dieValue1)}
-                  onChange={(e) => setDieValue1(parseInt(e.target.value || "1", 10) || 1)}
-                  style={{ width: 60 }}
-                />
-              </label>
-
-              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span>Die 2:</span>
-                <input
-                  value={dieValue2Input}
-                  onChange={(e) => setDieValue2Input(e.target.value)}
-                  placeholder="optional"
-                  style={{ width: 80 }}
-                />
-              </label>
-            </div>
-
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button onClick={roll} disabled={!connected || !awaitingDice}>Roll</button>
-              <button onClick={getLegalMoves} disabled={!connected || awaitingDice}>Get Legal Moves</button>
-              <button onClick={forfeitPendingDie} disabled={!connected || awaitingDice}>Forfeit Pending Die</button>
-            </div>
-
-            <div style={{ opacity: 0.85 }}>
-              LastDice: {lastDice ? JSON.stringify(lastDice) : "null"}
-            </div>
-
-            <div style={{ opacity: 0.85 }}>
-              awaitingDice: {awaitingDice ? "true" : "false"}
-              {bankedDice !== undefined ? ` | bankedDice: ${bankedDice}` : ""}
-            </div>
+            <div style={{ opacity: 0.85 }}>{statusLine}</div>
           </div>
         </section>
 
         <section style={cardStyle}>
-          <h3 style={{ marginTop: 0 }}>Dice State</h3>
+          <h3 style={{ marginTop: 0 }}>Roll Panel</h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {awaitingDice ? (
+              <>
+                <div style={{ opacity: 0.85 }}>
+                  {isUsingDebugRollOverride
+                    ? `Debug override active: showing ${effectiveEligibleRollCount} dice inputs.`
+                    : bankedDice && bankedDice > 0
+                      ? `Roll exactly ${bankedDice} banked dice.`
+                      : `Roll up to ${effectiveEligibleRollCount} dice.`}
+                </div>
+
+                <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  {rollInputs.map((value, idx) => (
+                    <label key={idx} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span>Die {idx + 1}:</span>
+                      <input
+                        value={value}
+                        onChange={(e) => {
+                          const next = rollInputs.slice();
+                          next[idx] = e.target.value;
+                          setRollInputs(next);
+                        }}
+                        placeholder={
+                          isUsingDebugRollOverride || (bankedDice && bankedDice > 0)
+                            ? "required"
+                            : idx === 0
+                              ? "required"
+                              : "optional"
+                        }
+                        style={{ width: 80 }}
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button onClick={roll} disabled={!connected || !canSubmitRoll}>Roll</button>
+                </div>
+
+                <div style={{ opacity: 0.85 }}>
+                  RollPreview: {rollPreview.length > 0 ? JSON.stringify(rollPreview) : "(invalid)"}
+                </div>
+              </>
+            ) : (
+              <div style={{ opacity: 0.85 }}>Roll inputs hidden while resolving dice.</div>
+            )}
+          </div>
+        </section>
+
+        <section style={cardStyle}>
+          <h3 style={{ marginTop: 0 }}>Pending Dice Panel</h3>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div>
               <strong>Pending Dice:</strong>
@@ -479,44 +556,38 @@ export default function App() {
                 {pendingDiceUI.length === 0 ? (
                   <span>(none)</span>
                 ) : (
-                  pendingDiceUI.map((die, idx) => (
+                  pendingDiceUI.map((pd, idx) => (
                     <button
-                      key={`${die}-${idx}`}
-                      onClick={() => setSelectedPendingIdx(idx)}
+                      key={`${pd.value}-${idx}`}
+                      onClick={() => selectPendingDie(idx)}
                       disabled={!connected}
                       style={{
                         fontWeight: selectedPendingIdx === idx ? "bold" : "normal",
-                        textDecoration: selectedPendingIdx === idx ? "underline" : "none"
+                        textDecoration: selectedPendingIdx === idx ? "underline" : "none",
                       }}
                     >
-                      {String(die)}
+                      {String(pd.value)}
+                      {pd.controllerId ? ` (${pd.controllerId})` : ""}
                     </button>
                   ))
                 )}
               </div>
             </div>
 
+            <div>Selected Pending Die: {selectedPendingDie == null ? "(none)" : String(selectedPendingDie)}</div>
             <div>
-              <strong>Selected Pending Die:</strong>{" "}
-              {selectedPendingDie == null ? "(none)" : String(selectedPendingDie)}
+              Selected Pending Controller:{" "}
+              {selectedPending == null ? "(none)" : (selectedPending.controllerId ?? turn?.nextActorId ?? "(none)")}
             </div>
 
-            <div>
-              <strong>Banked Dice:</strong>{" "}
-              {bankedDice === undefined ? "(none)" : String(bankedDice)}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={forfeitPendingDie} disabled={!connected || awaitingDice}>Forfeit Pending Die</button>
             </div>
           </div>
         </section>
-      </div>
-
-      <div style={debugGridStyle}>
-        <section style={cardStyle}>
-          <h3 style={{ marginTop: 0 }}>Turn</h3>
-          <pre style={preStyle}>{JSON.stringify(turn, null, 2)}</pre>
-        </section>
 
         <section style={cardStyle}>
-          <h3 style={{ marginTop: 0 }}>Moves</h3>
+          <h3 style={{ marginTop: 0 }}>Move Options</h3>
           {moves.length === 0 ? (
             <div>(none)</div>
           ) : (
@@ -533,6 +604,54 @@ export default function App() {
               ))}
             </div>
           )}
+        </section>
+
+        <section style={cardStyle}>
+          <h3 style={{ marginTop: 0 }}>Debug Tools</h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                type="checkbox"
+                checked={debugRollCountOverrideEnabled}
+                onChange={(e) => setDebugRollCountOverrideEnabled(e.target.checked)}
+              />
+              <span>Override eligible roll count</span>
+            </label>
+
+            <label style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span>Override count:</span>
+              <input
+                value={debugRollCountOverrideValue}
+                onChange={(e) => setDebugRollCountOverrideValue(e.target.value)}
+                disabled={!debugRollCountOverrideEnabled}
+                style={{ width: 80 }}
+              />
+            </label>
+
+            <div style={{ opacity: 0.85 }}>
+              Real eligible count: {realEligibleRollCount}
+              {isUsingDebugRollOverride ? ` | Effective override count: ${effectiveEligibleRollCount}` : ""}
+            </div>
+
+            {isUsingDebugRollOverride ? (
+              <div style={{ opacity: 0.85 }}>
+                Override affects UI rendering only. The server still enforces the real count.
+              </div>
+            ) : null}
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={getLegalMoves} disabled={!connected || selectedPendingDie == null}>
+                Debug: Get Legal Moves
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div style={diagGridStyle}>
+        <section style={cardStyle}>
+          <h3 style={{ marginTop: 0 }}>Turn JSON</h3>
+          <pre style={preStyle}>{JSON.stringify(turn, null, 2)}</pre>
         </section>
 
         <section style={cardStyle}>

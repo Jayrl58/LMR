@@ -1,22 +1,23 @@
 # Startup Milestone Frame — LMR Project
 
-Status: Updated after M5 completion verification  
-Status: Session validation added 2026-03-02  
-Status: Console rendering validation added 2026-03-04  
+Status: Updated after M5 completion verification
+Status: Session validation added 2026-03-02
+Status: Console rendering validation added 2026-03-04
 Status: Minimal UI validation added 2026-03-05
+Status: UI rendering model definition added 2026-03-08
 
 ------------------------------------------------------------------------
 
-COMPLETE M1 — Engine Core (Authoritative Rules Engine)  
-COMPLETE M2 — Server Authority Layer  
-COMPLETE M3 — Double Dice Mode  
+COMPLETE M1 — Engine Core (Authoritative Rules Engine)
+COMPLETE M2 — Server Authority Layer
+COMPLETE M3 — Double Dice Mode
 COMPLETE M4 — Team Play (2-Team Baseline)
 
-COMPLETE M5 — Team Model Expansion  
-COMPLETE M5.1 — 3 teams of 2 (6P board)  
-COMPLETE M5.2 — 4 teams of 2 (8P board)  
-COMPLETE M5.3 — Advanced delegation arbitration hardening  
-COMPLETE M5.4 — Multi-team finish ordering  
+COMPLETE M5 — Team Model Expansion
+COMPLETE M5.1 — 3 teams of 2 (6P board)
+COMPLETE M5.2 — 4 teams of 2 (8P board)
+COMPLETE M5.3 — Advanced delegation arbitration hardening
+COMPLETE M5.4 — Multi-team finish ordering
 COMPLETE M5.5 — Edge-case multi-team turn flow hardening
 
 COMPLETE OPT.KILLROLL — Optional Module — Kill-Roll Banking Hardening
@@ -61,17 +62,17 @@ Resolution:
 
 Verified with roll [6,1] producing:
 
-enter:p0:0:6  
-enter:p0:1:6  
-enter:p0:2:6  
+enter:p0:0:6
+enter:p0:1:6
+enter:p0:2:6
 enter:p0:3:6
 
 followed by:
 
-enterCenter:p0:0:1  
-enter:p0:1:1  
-enter:p0:2:1  
-enter:p0:3:1  
+enterCenter:p0:0:1
+enter:p0:1:1
+enter:p0:2:1
+enter:p0:3:1
 adv:p0:0:1
 
 Result:
@@ -94,13 +95,13 @@ Environment:
 
 Verified interaction loop:
 
-connect  
-hello  
-joinRoom  
-startGame  
-roll  
-legalMoves  
-move  
+connect
+hello
+joinRoom
+startGame
+roll
+legalMoves
+move
 moveResult
 
 Observed behavior:
@@ -114,10 +115,10 @@ Observed behavior:
 
 Example verified sequence:
 
-roll [1]  
+roll [1]
 → legalMoves (bankedDice:1)
 
-move enter:p0:1:1  
+move enter:p0:1:1
 → moveResult
 
 turn state after resolution:
@@ -130,21 +131,20 @@ Result:
 - UI correctly reflects turn state transitions
 - Full roll → move → roll loop verified
 
-
 ------------------------------------------------------------------------
 
 POST-COMPLETE VALIDATION — 2026-03-06 (Minimal UI Dice Lifecycle Validation)
 
 Using the LMR Minimal Debug UI, the authoritative server turn engine was
-validated for the full double‑dice + bank lifecycle.
+validated for the full double-dice + bank lifecycle.
 
 Verified behavior:
 
 - pendingDice created correctly from roll
 - pendingDice resolve one die at a time
 - bankedDice persist after partial resolution
-- bank cash‑out roll occurs once pendingDice are exhausted
-- bank recalculates from the cash‑out roll values
+- bank cash-out roll occurs once pendingDice are exhausted
+- bank recalculates from the cash-out roll values
 - roll rejected if pendingDice still exist
 - roll rejected if roll size does not match bankedDice
 - turn advances only when pendingDice = 0 and bankedDice = 0
@@ -161,9 +161,72 @@ Resolution:
 
 Result:
 
-- Server turn engine verified correct for the double‑dice + bank lifecycle
+- Server turn engine verified correct for the double-dice + bank lifecycle
   using the Minimal Debug UI client.
 
+------------------------------------------------------------------------
+
+POST-COMPLETE VALIDATION — 2026-03-08 (UI Rendering Model Definition)
+
+During UI exploration using the Minimal Debug UI client, the visual
+presentation model for board pieces and board spaces was defined.
+
+Peg Rendering Model:
+
+- Pegs render as solid cylinders with flat circular tops
+- Peg fully replaces the board space when present
+- Hole is not rendered beneath a peg
+- Peg style uses subtle top highlight and soft side gradient
+- Peg outline remains minimal to preserve color clarity
+
+Hole Rendering Model:
+
+- Empty board spaces render as shaded circular depressions
+- No visible rim or border is drawn
+- Hole depth indicated only by radial interior shading
+
+Rendering Rule:
+
+occupied space → drawPeg()
+empty space → drawHole()
+
+Color Palette Definition:
+
+A provisional 16-color peg palette was defined for player selection
+without exhausting options for late joiners.
+
+Palette:
+
+Blue
+Red
+Green
+Yellow
+Purple
+Orange
+Cyan
+Pink
+Lime
+Teal
+Magenta
+Navy
+Brown
+White
+Black
+Coral
+
+Status:
+
+- Peg geometry model defined
+- Board hole rendering model defined
+- Candidate peg color palette defined
+
+These assets remain provisional pending validation on a full board
+layout during M6 UI development.
+
+Result:
+
+- Foundational visual design for the board layer established
+- Ready to proceed into M6 UI Integration & Presentation
 
 ------------------------------------------------------------------------
 
@@ -177,6 +240,7 @@ Initial focus areas:
 - Determine UI state model for pendingDice / bankedDice
 - Establish deterministic move presentation rules
 - Begin replacing prototype console behaviors with production UI patterns
+- Begin board rendering prototype using peg/hole rendering model
 
 Stop Condition: UI layer can reliably consume server contract and
 present legalMoves without filtering or ambiguity.

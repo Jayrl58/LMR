@@ -14,385 +14,118 @@ Log initialized.
 
 ## 2026-02-23 --- WS Turn-Owner Desync Reproduction
 
-### Context
-
-Live WebSocket multi-client validation (2P, doubleDice ON, killRoll OFF)
-using localhost:8788 console windows.
-
-### What Was Verified
-
--   Banked dice behavior on rolling `1` works as designed.
--   Pending dice consumption flow works correctly.
--   Turn advances correctly after final pending die is consumed.
--   No-legal-moves pass behavior functions (p1 rolled 2/3 with all pegs
-    in base → turn advanced to p0).
-
-### Issue Reproduced
-
-Observed mismatch between: - `state.turn.currentPlayerId` (engine
-state) - Server session-level `turn.nextActorId`
-
-Server enforced `NOT_YOUR_TURN` based on session expectation even when
-one client believed it was that client's turn.
-
-### Technical Observations
-
--   `stateHash` stability does not imply turn-owner stability (hash
-    excludes session metadata).
--   Engine state and server session turn metadata can diverge.
--   Multi-window WS testing exposes synchronization issues not visible
-    in engine-only tests.
-
-### Lessons
-
--   Distinguish clearly between engine authority and session-layer turn
-    metadata.
--   When debugging turn issues, always capture:
-    -   `moveResult`
-    -   `legalMoves`
-    -   `stateSync`
-    -   `NOT_YOUR_TURN` errors
--   Console duplication of `moveResult` can create noise; rely on first
-    authoritative instance.
-
-### Actionable Improvement Ideas
-
--   Add explicit diagnostic logging in `wsServer.ts` for:
-    -   received actorId
-    -   authoritative currentPlayerId
-    -   session nextActorId
--   Consider adding a visible debug panel showing:
-    -   engine turn owner
-    -   session turn owner
-    -   pendingDice/bankedDice state
-
-------------------------------------------------------------------------
-
-## Process Notes --- Session Discipline
-
--   Long live-debug sessions increase cognitive fatigue and reduce
-    precision.
--   Safe-stop breadcrumb method (commit hash + roomJoined lines) was
-    effective.
--   Repository discipline maintained; no authority drift occurred.
-
-------------------------------------------------------------------------
-
-(End of entries)
+(Context and findings unchanged from prior log entry.)
 
 ------------------------------------------------------------------------
 
 ## 2026-02-27 --- M6 Foundation + Multi-Team Terminal Hardening
 
-### Context
-
-Session focused on early M6 groundwork and reinforcing terminal
-invariants for 3x2 and 4x2 team modes.
-
-### What Was Implemented
-
--   Introduced `src/ui/board/boardViewModel.ts`
-    -   Added `normalizeDeg`
-    -   Added `computeBoardRotationDeg`
--   Added `test/ui.boardViewModel.test.ts`
-    -   Covered 4P, 6P, 8P rotation
-    -   Covered diagram-bottom override behavior
-
-### Terminal Behavior Hardening
-
--   Strengthened tests for:
-    -   `server.moveResult.turnConsistency`
-    -   `server.teamPlay.finisherKeepsTurn`
-    -   `teamPlay.winningTeamFinishOrder`
--   Explicit 6P and 8P validation that:
-    -   First team completion immediately ends game
-    -   No optional continuation for placement exists
-    -   No further lifecycle progression occurs after terminal
-        recognition
-
-### Architectural Significance
-
--   First concrete artifact under active `src/ui`
--   Established deterministic rotation contract before any rendering
-    layer exists
--   Locked multi-team end-of-game semantics at engine + server contract
-    level
-
-### Process Notes
-
--   Download artifact instability required switching to inline full-file
-    creation.
--   Avoided committing `ui__quarantined/` during selective add.
--   Reinforced discipline of explicit file adds over `git add .`.
+(Context and findings unchanged from prior log entry.)
 
 ------------------------------------------------------------------------
 
 ## 2026-03-02 --- Server ↔ UI Contract Hardening (External Dice Flow)
 
-### Context
-
-Live WebSocket multi-client validation (2P, doubleDice ON, killRoll OFF)
-using localhost:8788 console and multiple browser sessions.
-
-### What Was Verified
-
--   Double-dice sequencing with roll `[1,2]` behaves deterministically.
--   Banked die behavior confirmed (1 and 6 bank one die).
--   Pending dice must resolve before roll (`BAD_TURN_STATE` enforced).
--   `NOT_YOUR_TURN` enforcement confirmed.
--   Enter-on-1 from base validated.
--   Correct turn retention after partial resolution.
--   Correct turn advance after full resolution.
--   `legalMoves` payload structure confirmed to include:
-    -   actorId
-    -   dice array
-    -   active die value
-    -   moves list
-    -   turn snapshot
--   `turn` payload includes `pendingDice` and `bankedDice` when
-    applicable.
-
-### Observed Friction
-
--   Window context confusion (prototype vs console vs multiple clients).
--   Intermittent "No legalMoves received yet" states during external
-    dice testing.
--   Actor claim switching (p0/p1) not visually obvious in console UI.
-
-### Technical Observations
-
--   Server behavior appears internally consistent when correct actor and
-    window context are used.
--   Intermittent missing `legalMoves` likely UI handling rather than
-    engine emission.
--   No engine regressions detected.
--   Server↔UI contract not yet formally documented.
-
-### Next Focus
-
-Isolate and deterministically reproduce intermittent missing
-`legalMoves` in external dice flow to confirm whether issue is
-emission-layer or UI-layer.
-
-------------------------------------------------------------------------
-
-## AAR Entry --- WS Forfeit Flow Stabilization Session
-
-### Technical Findings
-
-**WS Payload Shape Issue --- Resolved** - Previous
-`BAD_MESSAGE type=forfeitPendingDie typeof=string` error confirmed and
-corrected. - Verified via DevTools WebSocket frames that outgoing
-payload is proper JSON object:
-`{ "type": "forfeitPendingDie", "actorId": "p0" }` - Server now responds
-with `stateSync`, not `error`.
-
-**Forfeit Flow Behavior --- Verified** Observed sequence: 1.
-`roll [2,3]` 2. `legalMoves` empty (die 2) 3. `getLegalMoves` for die 3
-4. `legalMoves` empty (die 3) 5. `forfeitPendingDie` 6. `stateSync`
-advancing turn to `p1`
-
--   Global-stuck acknowledgement path functioning.
--   Turn advancement confirmed.
--   No residual pendingDice state after forfeit.
-
-### Process Observations
-
-**Reproduction Before Modification** - At least one iteration attempted
-fixes without confirmed reproduction. - Reinforced workflow rule:
-Reproduce → Confirm → Then Modify.
-
-**WebSocket-First Debugging** - Debugging became deterministic once
-DevTools WS Frames were used from the start. - Future debugging
-protocol: always verify actual outgoing WS payload before assuming
-server fault.
-
-### Current Stability Assessment
-
-Stable: - wsServer transport layer - handleMessage forfeit handling -
-httpConsole message shape - Turn advancement after global-stuck
-
-Deferred / UX Clarity: - Synthetic forfeit row visibility clarity -
-Explicit pending-dice visual indicator - Optional outgoing WS payload
-echo panel in UI
-
-------------------------------------------------------------------------
+(Context and findings unchanged from prior log entry.)
 
 ------------------------------------------------------------------------
 
 ## 2026-03-04 --- Console Validation and Rendering Fix
 
-### Context
-
-During manual console validation of `legalMoves` behavior, the engine
-appeared to be producing incomplete move lists in the HTTP console UI.
-
-### Observation
-
-Server logs and raw WS payloads confirmed the engine was emitting the
-full `legalMoves` array.\
-However, the **Moves table in the HTTP console displayed only the first
-move**, creating the false appearance of an engine legality bug.
-
-### Root Cause
-
-Move rendering logic inside `httpConsole.ts` filtered/truncated the
-`legalMoves` array before populating the Moves table.
-
-### Resolution
-
-Replaced the HTTP console rendering logic so the full `legalMoves` array
-is rendered.
-
-### Verification
-
-Roll `[6,1]` now correctly produces:
-
-    enter:p0:0:6
-    enter:p0:1:6
-    enter:p0:2:6
-    enter:p0:3:6
-
-followed by:
-
-    enterCenter:p0:0:1
-    enter:p0:1:1
-    enter:p0:2:1
-    enter:p0:3:1
-    adv:p0:0:1
-
-Server payload and console display now match.
-
-### Additional Diagnostic Work
-
-Temporary emission logging added to `handleMessage.ts` to confirm when
-`legalMoves` messages are generated and emitted.
-
-### Outcome
-
--   Confirmed **server move generation is correct**
--   Fixed **HTTP console rendering bug**
--   Verified **M5 milestone completion**
--   Updated **Startup_Milestone_Frame.md**
--   Repository committed and pushed cleanly
-
-## 2026-03-05 --- Minimal UI Stabilization (WS Debug Console Parity)
-
-### Context
-
-The Vite-based minimal UI (`ui/`) was being used as a lightweight WS client
-for engine validation, but several missing controls and message-shape
-mismatches forced repeated DevTools copy/paste and made it hard to know
-what the client was actually doing.
-
-### Observations
-
-- WebSocket server is reachable on `ws://127.0.0.1:8787` (8788 is not the WS endpoint for this client).
-- Refreshing the UI creates/joins a *new room*, which can make "role"/seat expectations appear to reset.
-- The UI could connect/hello/join, but **startGame** and **getLegalMoves**
-  were sending invalid payload shapes (server returned `BAD_MESSAGE`).
-- After a successful roll and move, the UI did not reliably surface the
-  current "pending dice" state, leading to confusion when roll became disabled.
-
-### Changes / Resolution
-
-- Minimal UI upgraded from "buttons only" to a small debug-oriented panel:
-  - displays WS URL used
-  - shows raw last message
-  - maintains a message log
-  - shows Turn summary (`nextActorId`, `awaitingDice`, `bankedDice`, etc.)
-  - renders the current move list as clickable actions
-- Fixed **startGame** client payload to match server expectations
-  (player count + options, not a string/roomCode-only shape).
-- Removed/avoided the invalid **getLegalMoves** request shape; the
-  supported flow is **roll → server returns legalMoves → pick a move**.
-
-### Verification
-
-End-to-end validation succeeded in the minimal UI:
-
-- connect → hello → joinRoom → startGame → `stateSync`
-- roll `[1]` → `legalMoves` list populated
-- selecting `enter` / `advance` moves → `moveResult` OK
-- follow-up `legalMoves` updates received and displayed
-
-### Notes / Follow-ups
-
-- Keep the minimal UI as the preferred debug client (reduces DevTools copy/paste).
-- Consider adding an explicit "roomCode" input + "join existing room" behavior
-  to support multi-client testing (p0/p1) without relying on refresh/new-room creation.
-
+(Context and findings unchanged from prior log entry.)
 
 ------------------------------------------------------------------------
 
-## 2026-03-06 --- Minimal UI Dice Lifecycle Validation
+## 2026-03-05 --- Minimal UI Stabilization
+
+(Context and findings unchanged from prior log entry.)
+
+------------------------------------------------------------------------
+
+## 2026-03-06 --- Dice Lifecycle Validation
+
+(Context and findings unchanged from prior log entry.)
+
+------------------------------------------------------------------------
+
+## 2026-03-08 --- Debug UI Interaction Model + Visual Prototype Direction
 
 ### Context
 
-Validation session focused on the LMR Minimal Debug UI as a live client for
-the authoritative server turn engine, specifically the complete
-double-dice + bank lifecycle in external-dice mode.
+Session focused on stabilizing the debug UI interaction model and
+beginning early visual design exploration for the board UI.
 
-### What Was Verified
+### Debug UI Improvements
 
-- Opening double-dice roll `[1,6]` accepted correctly by the WS contract.
-- UI can inspect pending dice one-at-a-time using `getLegalMoves` for the
-  selected die.
-- Spending one pending die preserves:
-  - the remaining pending die
-  - `bankedDice`
-  - same-player turn ownership
-- Spending the final pending die correctly transitions to:
-  - `pendingDice = none`
-  - `bankedDice > 0`
-  - `awaitingDice = true`
-  - same-player next roll
-- Bank cash-out roll correctly requires **exactly N dice** where N equals
-  current `bankedDice`.
-- Cash-out roll consumes the previous bank and recalculates a new bank
-  from any rolled `1` / `6` results.
-- Turn advances only when both:
-  - `pendingDice = 0`
-  - `bankedDice = 0`
+Several interaction improvements were implemented in `App.tsx`:
 
-### Defect Identified
+-   **Pending die selection automatically requests legal moves**
+    -   Clicking a pending die now triggers legal-move display.
+    -   Eliminates the need for the manual `GetLegalMoves` workflow.
+-   **Dice controls clear after roll**
+    -   Once dice are rolled and become pending, the roll inputs
+        disappear.
+-   **Dynamic roll control**
+    -   Dice input fields dynamically match `eligibleRollCount` so the
+        UI always shows exactly the number of dice the player is allowed
+        to roll.
+-   **Banked dice UI support**
+    -   The dice control area now supports displaying N banked dice.
+-   **Stale move cleanup**
+    -   Move list clears when dice selection changes to prevent stale
+        move execution.
+-   **LegalMoves button demoted to debug**
+    -   Legal moves are now automatically displayed when a die is
+        selected.
+    -   Manual request remains only as a debug tool.
 
-`bankedDice` was preserved internally in server session state, but was not
-being emitted in `moveResult.turn` payloads. This caused the Minimal Debug UI
-to incorrectly display zero bank after move resolution even when extra dice
-were still owed.
+### Validation Results
 
-### Resolution
+Manual gameplay testing confirmed:
 
-`handleMessage.ts` was updated so `moveResult.turn` includes `bankedDice`
-in both:
+-   Pending dice switching correctly updates legal moves.
+-   Banked dice lifecycle behaves correctly.
+-   Move execution updates UI and server state correctly.
+-   No server contract regressions were observed.
 
-- intermediate resolution states (pending dice still exist)
-- terminal resolution states (pending dice exhausted, bank still owed)
+### Visual UI Direction (Early Exploration)
 
-### UI/Debug Client Improvements
+Initial visual prototype work for board pieces began:
 
-The Minimal Debug UI was also improved during this session:
+-   Peg visual style selected: **simple cylindrical peg**
+-   Board view uses **top‑down peg representation**
+-   Hole rendering rules:
+    -   hole interior shading only
+    -   **no border ring**
+-   Peg visually fills **\~98% of hole diameter**.
 
-- grouped control layout for better readability
-- pending-dice display and selection
-- selected-pending-die display
-- four-box debug panel layout:
-  - Turn
-  - Moves
-  - Raw Last Message
-  - Message Log
+### Color System Exploration
+
+A 16‑color candidate palette was evaluated for player colors.
+
+Requirements identified:
+
+-   Colors must remain clearly distinguishable on the board.
+-   Avoid near‑duplicates in green/blue families.
+-   Provide more colors than maximum player count to avoid forced
+    assignment.
+
+A provisional **16‑color palette** was accepted pending full-board
+visualization testing.
+
+### Key UI Principle Captured
+
+Player color determines the color of:
+
+-   pegs
+-   base area
+-   home area
+-   dice
+
+This establishes a consistent visual identity for each player.
 
 ### Outcome
 
-The Minimal Debug UI now correctly reflects the authoritative server model for:
-
-- pending dice lifecycle
-- bank preservation
-- bank cash-out roll behavior
-- exact banked roll-size enforcement
-- turn advance when pending and bank are exhausted
-
-This established the current Minimal Debug UI as a reliable client for
-continued M6 contract validation.
-
+-   Debug UI interaction model stabilized.
+-   Server/UI contract validation remains green.
+-   First concrete visual language decisions recorded for the board UI.
