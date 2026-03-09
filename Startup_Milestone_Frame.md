@@ -228,31 +228,3 @@ Result:
 
 * Foundational visual design for the board layer established
 * Ready to proceed into M6 UI Integration & Presentation
-
----
-
-RESTART ANCHOR — Next Session Focus
-
-Current Phase
-Phase 6 — Graphical UI Implementation
-
-Immediate Starting Task
-Begin board renderer prototype and peg visualization.
-
-Initial Targets
-
-* Establish board coordinate system
-* Render board holes (no border ring, interior shading only)
-* Integrate cylindrical peg visual prototype
-* Implement peg color binding to player color
-
-Primary Files Expected
-
-ui/src/App.tsx
-ui/src/board/*
-ui/src/peg/*
-
-Stop Condition
-
-UI layer can reliably consume the server contract and present
-legalMoves without filtering or ambiguity.
