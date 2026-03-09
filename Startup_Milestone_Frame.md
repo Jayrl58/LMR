@@ -5,6 +5,7 @@ Status: Session validation added 2026-03-02
 Status: Console rendering validation added 2026-03-04
 Status: Minimal UI validation added 2026-03-05
 Status: UI rendering model definition added 2026-03-08
+Status: Board geometry baseline locked 2026-03-09
 
 ---
 
@@ -228,3 +229,52 @@ Result:
 
 * Foundational visual design for the board layer established
 * Ready to proceed into M6 UI Integration & Presentation
+
+---
+
+POST-COMPLETE VALIDATION — 2026-03-09 (Board Geometry Baseline Lock)
+
+Canonical board geometry references for the 4‑player, 6‑player, and
+8‑player boards were reconstructed and verified.
+
+Artifacts preserved:
+
+Playpen/board_geometry/
+- LMR_board_reference_4p.png
+- LMR_board_reference_6p.png
+- LMR_board_reference_8p.png
+- LMR_board_geometry_spec.md
+
+Geometry source files:
+
+Geometry files/
+- B4_geometry.csv
+- B6_geometry.csv
+- B8_geometry.csv
+- Track Index Table.xlsx
+
+Key geometry invariants:
+
+* All boards use the same 14‑spot arm module
+  (T0–T13 track + H0–H3 home column).
+* The home column always points toward the board center.
+* Perimeter continuity rule:
+  PiT13 → P(i+1)T0 (clockwise traversal).
+
+Accepted visual baselines:
+
+4‑Player board  
+Orthogonal reference layout.
+
+6‑Player board  
+Approximate parameters:
+radius ≈ 9  
+branch swing ≈ 2.5°
+
+8‑Player board  
+Approximate parameters:
+radius ≈ 10.6  
+branch swing ≈ 4°
+
+These diagrams now serve as the working authority for board layout
+unless board geometry is explicitly reopened.
