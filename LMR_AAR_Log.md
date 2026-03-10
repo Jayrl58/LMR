@@ -260,21 +260,43 @@ specification and placement parameters.
 
 This renderer should be used to validate geometry authority files before
 full graphical UI development begins.
-```
 
----
+------------------------------------------------------------------------
 
-### Next question you asked earlier
+## 2026-03-10 --- Geometry Sandbox & Renderer Foundation (Process Notes)
 
-You also wanted to know **what tool would have made today’s geometry work much easier**.
+### What went well
 
-That tool is essentially a **live geometry preview renderer**:
+The geometry sandbox renderer proved extremely effective for board
+calibration. Interactive parameter adjustment allowed rapid convergence
+on visually uniform spacing for 4-player, 6-player, and 8-player boards.
 
-* sliders for **radius**
-* sliders for **branch swing**
-* instant redraw of the board
-* no export-image / inspect / regenerate cycle
+Centralizing geometry authority in a single file (`boardGeometry.ts`)
+worked well. Both the sandbox and renderer referencing the same geometry
+definitions eliminated the risk of geometry drift between development
+tools and gameplay UI code.
 
-You visually dial the parameters in **seconds instead of dozens of PNG iterations**.
+Early verification of the renderer skeleton against all three board
+configurations confirmed that the canonical arm replication model is
+sufficient to reproduce the board layouts.
 
-Next message I can show you **exactly what that tool would look like conceptually** and how simple it would be to build inside the LMR dev UI.
+### What did not work well
+
+Response formatting degraded during longer code-generation exchanges.
+Several code blocks required regeneration due to formatting corruption,
+which slowed the development loop.
+
+Upload limits temporarily blocked the normal continuity-lock workflow.
+Manual text pasting was required to complete milestone confirmation.
+
+### Process adjustments
+
+When generating implementation files, responses should be restricted to:
+
+- file name
+- single clean code block
+
+This reduces formatting failure risk during long sessions.
+
+Continuity-lock procedures should allow a text-paste fallback when file
+uploads are temporarily unavailable.

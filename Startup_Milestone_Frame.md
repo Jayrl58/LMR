@@ -1,40 +1,41 @@
+
+
 # Startup Milestone Frame — LMR Project
 
-Status: Updated after M5 completion verification
-Status: Session validation added 2026-03-02
-Status: Console rendering validation added 2026-03-04
-Status: Minimal UI validation added 2026-03-05
-Status: UI rendering model definition added 2026-03-08
-Status: Board geometry baseline locked 2026-03-09
+Status: Updated after M5 completion verification  
+Status: Session validation added 2026-03-02  
+Status: Console rendering validation added 2026-03-04  
+Status: Minimal UI validation added 2026-03-05  
+Status: UI rendering model definition added 2026-03-08  
+Status: Board geometry baseline locked 2026-03-09  
+Status: Sandbox geometry authority freeze 2026-03-10  
 Status: Milestone architecture expanded to full lifecycle
 
 ---
 
 Milestone Status Symbols
 
-✓ COMPLETE
-○ IN PROGRESS
+✓ COMPLETE  
+○ IN PROGRESS  
 → PLANNED
 
 Milestone Rendering Rules
 
 Default view: fully collapsed milestone list.
 
-Expand milestones only when explicitly requested
+Expand milestones only when explicitly requested  
 (e.g., "Show M6").
 
 ---
 
-✓ M1 — Engine Core (Authoritative Rules Engine)
-✓ M2 — Server Authority Layer
-✓ M3 — Pregame Options
-✓ M4 — Team Model Expansion
-
-→ M5 — Game Setup UI
-○ M6 — Graphical Board UI
-
-→ M7 — Gameplay Interaction Layer
-→ M8 — Game Completion & Results
+✓ M1 — Engine Core (Authoritative Rules Engine)  
+✓ M2 — Server Authority Layer  
+✓ M3 — Pregame Options  
+✓ M4 — Team Model Expansion  
+→ M5 — Game Setup UI  
+○ M6 — Graphical Board UI  
+→ M7 — Gameplay Interaction Layer  
+→ M8 — Game Completion & Results  
 → M9 — Production Readiness
 
 ---
@@ -51,7 +52,6 @@ Validated runtime behavior (external dice mode, double-dice enabled):
 * Verified correct turn retention after partial resolution
 * Verified correct turn advance after full resolution
 * Verified legalMoves payload includes:
-
   * actorId
   * dice array
   * active die value
@@ -76,18 +76,18 @@ Resolution:
 
 Verified with roll [6,1] producing:
 
-enter:p0:0:6
-enter:p0:1:6
-enter:p0:2:6
-enter:p0:3:6
+enter:p0:0:6  
+enter:p0:1:6  
+enter:p0:2:6  
+enter:p0:3:6  
 
 followed by:
 
-enterCenter:p0:0:1
-enter:p0:1:1
-enter:p0:2:1
-enter:p0:3:1
-adv:p0:0:1
+enterCenter:p0:0:1  
+enter:p0:1:1  
+enter:p0:2:1  
+enter:p0:3:1  
+adv:p0:0:1  
 
 Result:
 
@@ -99,7 +99,7 @@ Result:
 
 POST-COMPLETE VALIDATION — 2026-03-05 (Minimal UI Debug Client)
 
-A minimal React debug client was introduced to verify that the server
+A minimal React debug client was introduced to verify that the server  
 WebSocket contract operates correctly outside the HTTP console.
 
 Environment:
@@ -109,14 +109,14 @@ Environment:
 
 Verified interaction loop:
 
-connect
-hello
-joinRoom
-startGame
-roll
-legalMoves
-move
-moveResult
+connect  
+hello  
+joinRoom  
+startGame  
+roll  
+legalMoves  
+move  
+moveResult  
 
 Observed behavior:
 
@@ -129,10 +129,10 @@ Observed behavior:
 
 Example verified sequence:
 
-roll [1]
+roll [1]  
 → legalMoves (bankedDice:1)
 
-move enter:p0:1:1
+move enter:p0:1:1  
 → moveResult
 
 turn state after resolution:
@@ -149,7 +149,7 @@ Result:
 
 POST-COMPLETE VALIDATION — 2026-03-06 (Minimal UI Dice Lifecycle Validation)
 
-Using the LMR Minimal Debug UI, the authoritative server turn engine was
+Using the LMR Minimal Debug UI, the authoritative server turn engine was  
 validated for the full double-dice + bank lifecycle.
 
 Verified behavior:
@@ -165,24 +165,24 @@ Verified behavior:
 
 Defect discovered during validation:
 
-* `bankedDice` was not included in `moveResult.turn`, preventing the UI
+* `bankedDice` was not included in `moveResult.turn`, preventing the UI  
   from displaying owed dice after a move.
 
 Resolution:
 
-* handleMessage.ts updated so `moveResult.turn` includes `bankedDice`
+* handleMessage.ts updated so `moveResult.turn` includes `bankedDice`  
   during both intermediate and terminal resolution states.
 
 Result:
 
-* Server turn engine verified correct for the double-dice + bank lifecycle
+* Server turn engine verified correct for the double-dice + bank lifecycle  
   using the Minimal Debug UI client.
 
 ---
 
 POST-COMPLETE VALIDATION — 2026-03-08 (UI Rendering Model Definition)
 
-During UI exploration using the Minimal Debug UI client, the visual
+During UI exploration using the Minimal Debug UI client, the visual  
 presentation model for board pieces and board spaces was defined.
 
 Peg Rendering Model:
@@ -201,32 +201,32 @@ Hole Rendering Model:
 
 Rendering Rule:
 
-occupied space → drawPeg()
+occupied space → drawPeg()  
 empty space → drawHole()
 
 Color Palette Definition:
 
-A provisional 16-color peg palette was defined for player selection
+A provisional 16-color peg palette was defined for player selection  
 without exhausting options for late joiners.
 
 Palette:
 
-Blue
-Red
-Green
-Yellow
-Purple
-Orange
-Cyan
-Pink
-Lime
-Teal
-Magenta
-Navy
-Brown
-White
-Black
-Coral
+Blue  
+Red  
+Green  
+Yellow  
+Purple  
+Orange  
+Cyan  
+Pink  
+Lime  
+Teal  
+Magenta  
+Navy  
+Brown  
+White  
+Black  
+Coral  
 
 Status:
 
@@ -234,7 +234,7 @@ Status:
 * Board hole rendering model defined
 * Candidate peg color palette defined
 
-These assets remain provisional pending validation on a full board
+These assets remain provisional pending validation on a full board  
 layout during M6 UI development.
 
 Result:
@@ -246,32 +246,32 @@ Result:
 
 POST-COMPLETE VALIDATION — 2026-03-09 (Board Geometry Baseline Lock)
 
-Canonical board geometry references for the 4-player, 6-player, and
+Canonical board geometry references for the 4-player, 6-player, and  
 8-player boards were reconstructed and verified.
 
 Artifacts preserved:
 
 Playpen/board_geometry/
-- LMR_board_reference_4p.png
-- LMR_board_reference_6p.png
-- LMR_board_reference_8p.png
-- LMR_board_geometry_spec.md
+
+* LMR_board_reference_4p.png
+* LMR_board_reference_6p.png
+* LMR_board_reference_8p.png
+* LMR_board_geometry_spec.md
 
 Geometry source files:
 
 Geometry files/
-- B4_geometry.csv
-- B6_geometry.csv
-- B8_geometry.csv
-- Track Index Table.xlsx
+
+* B4_geometry.csv
+* B6_geometry.csv
+* B8_geometry.csv
+* Track Index Table.xlsx
 
 Key geometry invariants:
 
-* All boards use the same 14-spot arm module
-  (T0–T13 track + H0–H3 home column).
-* The home column always points toward the board center.
-* Perimeter continuity rule:
-  PiT13 → P(i+1)T0 (clockwise traversal).
+* All boards use the same 14-spot arm module (T0–T13 track + H0–H3 home column)
+* The home column always points toward the board center
+* Perimeter continuity rule: PiT13 → P(i+1)T0 (clockwise traversal)
 
 Accepted visual baselines:
 
@@ -279,14 +279,84 @@ Accepted visual baselines:
 Orthogonal reference layout.
 
 6-Player board  
-Approximate parameters:
+Approximate parameters:  
 radius ≈ 9  
 branch swing ≈ 2.5°
 
 8-Player board  
-Approximate parameters:
+Approximate parameters:  
 radius ≈ 10.6  
 branch swing ≈ 4°
 
-These diagrams now serve as the working authority for board layout
+These diagrams now serve as the working authority for board layout  
 unless board geometry is explicitly reopened.
+
+---
+
+POST-COMPLETE VALIDATION — 2026-03-10 (Sandbox Geometry Authority Freeze)
+
+A geometry verification sandbox renderer was introduced to validate  
+board layout geometry using the canonical arm model.
+
+Sandbox capabilities:
+
+* Visual rendering of 4-player, 6-player, and 8-player boards
+* Adjustable parameters:
+  - T6 radius
+  - spot spacing
+  - branch swing
+  - hole size
+* Track continuity overlay
+* Direction arrows for perimeter traversal
+* Join-distance measurement overlay
+* Spot ID labeling for debugging
+
+Using the sandbox renderer, geometry parameters were tuned until  
+perimeter continuity and arm alignment produced visually uniform  
+track spacing for each board configuration.
+
+Accepted calibration set:
+
+4-player board  
+T6 radius: 7  
+spot spacing: 56  
+branch swing: 0  
+hole radius: 10  
+join distance ≈ 56
+
+6-player board  
+T6 radius: 9  
+spot spacing: 40  
+branch swing: -3.6  
+hole radius: 8  
+join distance ≈ 40
+
+8-player board  
+T6 radius: 10.6  
+spot spacing: 31  
+branch swing: -3.6  
+hole radius: 6.6  
+join distance ≈ 31.2
+
+Geometry authority consolidation:
+
+Shared geometry source:
+
+Playpen/board_geometry/boardGeometry.ts
+
+Contents:
+
+* BOARD_GEOMETRY — calibrated geometry parameters
+* CANONICAL_ARM — grid coordinates for the 14-spot arm module
+* TRACK_LOOP_ORDER — canonical track traversal order
+
+Both the sandbox renderer and the future gameplay board renderer now  
+reference this shared geometry authority, eliminating duplication  
+between development tools and production UI code.
+
+Result:
+
+* Board geometry calibration completed
+* Geometry authority centralized
+* Sandbox renderer validated for all board sizes
+* Project ready to proceed with the gameplay board renderer in M6
