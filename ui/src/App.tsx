@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Sandbox from "./Sandbox";
 
 type LogEntry = { dir: "SEND" | "RECV" | "INFO"; msg: any };
 
@@ -434,6 +435,8 @@ export default function App() {
 
   return (
     <div style={{ fontFamily: "monospace", padding: 16 }}>
+      <Sandbox />
+
       <h2>LMR Minimal Debug UI</h2>
 
       <div style={gameplayGridStyle}>
