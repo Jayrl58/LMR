@@ -6,24 +6,36 @@ Status: Console rendering validation added 2026-03-04
 Status: Minimal UI validation added 2026-03-05
 Status: UI rendering model definition added 2026-03-08
 Status: Board geometry baseline locked 2026-03-09
+Status: Milestone architecture expanded to full lifecycle
 
 ---
 
-COMPLETE M1 — Engine Core (Authoritative Rules Engine)
-COMPLETE M2 — Server Authority Layer
-COMPLETE M3 — Double Dice Mode
-COMPLETE M4 — Team Play (2-Team Baseline)
+Milestone Status Symbols
 
-COMPLETE M5 — Team Model Expansion
-COMPLETE M5.1 — 3 teams of 2 (6P board)
-COMPLETE M5.2 — 4 teams of 2 (8P board)
-COMPLETE M5.3 — Advanced delegation arbitration hardening
-COMPLETE M5.4 — Multi-team finish ordering
-COMPLETE M5.5 — Edge-case multi-team turn flow hardening
+✓ COMPLETE
+○ IN PROGRESS
+→ PLANNED
 
-COMPLETE OPT.KILLROLL — Optional Module — Kill-Roll Banking Hardening
+Milestone Rendering Rules
 
-NOT_STARTED M6 — UI Integration & Presentation
+Default view: fully collapsed milestone list.
+
+Expand milestones only when explicitly requested
+(e.g., "Show M6").
+
+---
+
+✓ M1 — Engine Core (Authoritative Rules Engine)
+✓ M2 — Server Authority Layer
+✓ M3 — Pregame Options
+✓ M4 — Team Model Expansion
+
+→ M5 — Game Setup UI
+○ M6 — Graphical Board UI
+
+→ M7 — Gameplay Interaction Layer
+→ M8 — Game Completion & Results
+→ M9 — Production Readiness
 
 ---
 
@@ -234,8 +246,8 @@ Result:
 
 POST-COMPLETE VALIDATION — 2026-03-09 (Board Geometry Baseline Lock)
 
-Canonical board geometry references for the 4‑player, 6‑player, and
-8‑player boards were reconstructed and verified.
+Canonical board geometry references for the 4-player, 6-player, and
+8-player boards were reconstructed and verified.
 
 Artifacts preserved:
 
@@ -255,7 +267,7 @@ Geometry files/
 
 Key geometry invariants:
 
-* All boards use the same 14‑spot arm module
+* All boards use the same 14-spot arm module
   (T0–T13 track + H0–H3 home column).
 * The home column always points toward the board center.
 * Perimeter continuity rule:
@@ -263,15 +275,15 @@ Key geometry invariants:
 
 Accepted visual baselines:
 
-4‑Player board  
+4-Player board  
 Orthogonal reference layout.
 
-6‑Player board  
+6-Player board  
 Approximate parameters:
 radius ≈ 9  
 branch swing ≈ 2.5°
 
-8‑Player board  
+8-Player board  
 Approximate parameters:
 radius ≈ 10.6  
 branch swing ≈ 4°
