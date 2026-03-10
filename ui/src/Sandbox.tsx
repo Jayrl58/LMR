@@ -1,25 +1,18 @@
 import React, { useMemo, useState } from "react";
+import {
+  BOARD_GEOMETRY,
+  CANONICAL_ARM,
+  TRACK_LOOP_ORDER,
+} from "../../board_geometry/boardGeometry";
 
 type BoardType = "4P" | "6P" | "8P";
 type Point = { x: number; y: number };
-type SpotKind = "track" | "home";
 
-type SpotDef = {
+type RenderedSpot = {
   id: string;
   x: number;
   y: number;
-  kind: SpotKind;
-};
-
-type BoardPreset = {
-  arms: number;
-  t6RadiusSpots: number;
-  branchSwingDeg: number;
-  spotSpacingPx: number;
-  holeRadiusPx: number;
-};
-
-type RenderedSpot = SpotDef & {
+  kind: "track" | "home";
   screenX: number;
   screenY: number;
 };
@@ -48,67 +41,11 @@ type JoinDistance = {
 const VIEW_SIZE = 1000;
 const CENTER = VIEW_SIZE / 2;
 
-const PRESETS: Record<BoardType, BoardPreset> = {
-  "4P": {
-    arms: 4,
-    t6RadiusSpots: 7,
-    branchSwingDeg: 0,
-    spotSpacingPx: 56,
-    holeRadiusPx: 10,
-  },
-  "6P": {
-    arms: 6,
-    t6RadiusSpots: 9,
-    branchSwingDeg: 2.5,
-    spotSpacingPx: 40,
-    holeRadiusPx: 8,
-  },
-  "8P": {
-    arms: 8,
-    t6RadiusSpots: 10.6,
-    branchSwingDeg: 4,
-    spotSpacingPx: 31,
-    holeRadiusPx: 6.6,
-  },
+const PRESETS: Record<BoardType, { arms: 4 | 6 | 8 }> = {
+  "4P": { arms: 4 },
+  "6P": { arms: 6 },
+  "8P": { arms: 8 },
 };
-
-const CANONICAL_ARM: SpotDef[] = [
-  { id: "T13", x: -2, y: 5, kind: "track" },
-  { id: "T12", x: -2, y: 4, kind: "track" },
-  { id: "T11", x: -2, y: 3, kind: "track" },
-  { id: "T10", x: -2, y: 2, kind: "track" },
-  { id: "T9", x: -2, y: 1, kind: "track" },
-  { id: "T8", x: -2, y: 0, kind: "track" },
-  { id: "T7", x: -1, y: 0, kind: "track" },
-  { id: "T6", x: 0, y: 0, kind: "track" },
-  { id: "T5", x: 1, y: 0, kind: "track" },
-  { id: "T4", x: 2, y: 0, kind: "track" },
-  { id: "T3", x: 2, y: 1, kind: "track" },
-  { id: "T2", x: 2, y: 2, kind: "track" },
-  { id: "T1", x: 2, y: 3, kind: "track" },
-  { id: "T0", x: 2, y: 4, kind: "track" },
-  { id: "H0", x: 0, y: 1, kind: "home" },
-  { id: "H1", x: 0, y: 2, kind: "home" },
-  { id: "H2", x: 0, y: 3, kind: "home" },
-  { id: "H3", x: 0, y: 4, kind: "home" },
-];
-
-const TRACK_LOOP_ORDER = [
-  "T0",
-  "T1",
-  "T2",
-  "T3",
-  "T4",
-  "T5",
-  "T6",
-  "T7",
-  "T8",
-  "T9",
-  "T10",
-  "T11",
-  "T12",
-  "T13",
-];
 
 function degToRad(deg: number): number {
   return (deg * Math.PI) / 180;
@@ -161,7 +98,6 @@ function makeBasePos(
 
 function applyBranchSwing(localGrid: Point, swingDeg: number): Point {
   if (swingDeg === 0) return localGrid;
-
   if (localGrid.y === 0) return localGrid;
   if (localGrid.x === 0) return localGrid;
 
@@ -190,10 +126,7 @@ function buildArmSpots(
   const basePos = makeBasePos(radiusSpots, spacingPx, armIndex, arms);
 
   return CANONICAL_ARM.map((spot) => {
-    const localGrid = {
-      x: spot.x,
-      y: spot.y,
-    };
+    const localGrid = { x: spot.x, y: spot.y };
 
     const swungGrid = applyBranchSwing(localGrid, swingDeg);
 
@@ -224,7 +157,7 @@ function buildCenterline(
   arms: number,
   radiusSpots: number,
   spacingPx: number
-): { x1: number; y1: number; x2: number; y2: number } {
+) {
   const stepDeg = 360 / arms;
   const thetaRad = degToRad(-armIndex * stepDeg);
 
@@ -245,7 +178,7 @@ function buildCenterline(
 function buildTrackOverlaySegments(arms: RenderedSpot[][]): Segment[] {
   const segments: Segment[] = [];
 
-  for (let armIndex = 0; armIndex < arms.length; armIndex += 1) {
+  for (let armIndex = 0; armIndex < arms.length; armIndex++) {
     const arm = arms[armIndex];
     const nextArm = arms[(armIndex + 1) % arms.length];
 
@@ -256,7 +189,7 @@ function buildTrackOverlaySegments(arms: RenderedSpot[][]): Segment[] {
       nextArm.filter((s) => s.kind === "track").map((s) => [s.id, s])
     );
 
-    for (let i = 0; i < TRACK_LOOP_ORDER.length - 1; i += 1) {
+    for (let i = 0; i < TRACK_LOOP_ORDER.length - 1; i++) {
       const fromId = TRACK_LOOP_ORDER[i];
       const toId = TRACK_LOOP_ORDER[i + 1];
       const from = armTrackMap.get(fromId);
@@ -293,7 +226,7 @@ function buildTrackOverlaySegments(arms: RenderedSpot[][]): Segment[] {
 function buildJoinDistances(arms: RenderedSpot[][]): JoinDistance[] {
   const joins: JoinDistance[] = [];
 
-  for (let armIndex = 0; armIndex < arms.length; armIndex += 1) {
+  for (let armIndex = 0; armIndex < arms.length; armIndex++) {
     const arm = arms[armIndex];
     const nextArm = arms[(armIndex + 1) % arms.length];
 
@@ -363,10 +296,14 @@ function buildArrowGlyph(seg: Segment, size = 10) {
 
 export default function Sandbox() {
   const [boardType, setBoardType] = useState<BoardType>("4P");
-  const [t6RadiusSpots, setT6RadiusSpots] = useState<number>(PRESETS["4P"].t6RadiusSpots);
-  const [branchSwingDeg, setBranchSwingDeg] = useState<number>(PRESETS["4P"].branchSwingDeg);
-  const [spotSpacingPx, setSpotSpacingPx] = useState<number>(PRESETS["4P"].spotSpacingPx);
-  const [holeRadiusPx, setHoleRadiusPx] = useState<number>(PRESETS["4P"].holeRadiusPx);
+
+  const initialGeometry = BOARD_GEOMETRY[4];
+
+  const [t6RadiusSpots, setT6RadiusSpots] = useState<number>(initialGeometry.t6Radius);
+  const [branchSwingDeg, setBranchSwingDeg] = useState<number>(initialGeometry.branchSwingDeg);
+  const [spotSpacingPx, setSpotSpacingPx] = useState<number>(initialGeometry.spotSpacing);
+  const [holeRadiusPx, setHoleRadiusPx] = useState<number>(initialGeometry.holeRadius);
+
   const [showCenterlines, setShowCenterlines] = useState<boolean>(true);
   const [showLabels, setShowLabels] = useState<boolean>(false);
   const [showTrackOverlay, setShowTrackOverlay] = useState<boolean>(true);
@@ -374,42 +311,41 @@ export default function Sandbox() {
   const [showJoinDistances, setShowJoinDistances] = useState<boolean>(false);
 
   function loadPreset(nextBoardType: BoardType) {
-    const preset = PRESETS[nextBoardType];
+    const arms = PRESETS[nextBoardType].arms;
+    const preset = BOARD_GEOMETRY[arms];
+
     setBoardType(nextBoardType);
-    setT6RadiusSpots(preset.t6RadiusSpots);
+    setT6RadiusSpots(preset.t6Radius);
     setBranchSwingDeg(preset.branchSwingDeg);
-    setSpotSpacingPx(preset.spotSpacingPx);
-    setHoleRadiusPx(preset.holeRadiusPx);
+    setSpotSpacingPx(preset.spotSpacing);
+    setHoleRadiusPx(preset.holeRadius);
   }
 
   function resetPreset() {
     loadPreset(boardType);
   }
 
-  const preset = PRESETS[boardType];
+  const armsCount = PRESETS[boardType].arms;
 
   const arms = useMemo(() => {
-    return Array.from({ length: preset.arms }, (_, armIndex) =>
-      buildArmSpots(armIndex, preset.arms, t6RadiusSpots, spotSpacingPx, branchSwingDeg)
+    return Array.from({ length: armsCount }, (_, armIndex) =>
+      buildArmSpots(armIndex, armsCount, t6RadiusSpots, spotSpacingPx, branchSwingDeg)
     );
-  }, [preset.arms, t6RadiusSpots, spotSpacingPx, branchSwingDeg]);
+  }, [armsCount, t6RadiusSpots, spotSpacingPx, branchSwingDeg]);
 
   const centerlines = useMemo(() => {
-    return Array.from({ length: preset.arms }, (_, armIndex) =>
-      buildCenterline(armIndex, preset.arms, t6RadiusSpots, spotSpacingPx)
+    return Array.from({ length: armsCount }, (_, armIndex) =>
+      buildCenterline(armIndex, armsCount, t6RadiusSpots, spotSpacingPx)
     );
-  }, [preset.arms, t6RadiusSpots, spotSpacingPx]);
+  }, [armsCount, t6RadiusSpots, spotSpacingPx]);
 
-  const trackOverlaySegments = useMemo(() => {
-    return buildTrackOverlaySegments(arms);
-  }, [arms]);
+  const trackOverlaySegments = useMemo(() => buildTrackOverlaySegments(arms), [arms]);
 
-  const joinDistances = useMemo(() => {
-    return buildJoinDistances(arms);
-  }, [arms]);
+  const joinDistances = useMemo(() => buildJoinDistances(arms), [arms]);
 
   const arrowGlyphs = useMemo(() => {
     const arrowSize = Math.max(7, holeRadiusPx * 0.9);
+
     return trackOverlaySegments
       .map((seg) => ({
         key: `arrow-${seg.key}`,
