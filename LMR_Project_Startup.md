@@ -1,199 +1,285 @@
-# LMR Project --- Startup Authority & State Anchor
+Below is the **full replacement content** for the AAR file with the **new section appended inside the 2026-03-09 entry**, as discussed. Replace the existing file with this content.
 
-Purpose: Provide authoritative context for Startup Protocol execution.
+---
 
-This document defines the project-specific Startup Protocol execution rules,
-scope boundaries, and continuity procedure. It is **not** the milestone source
-of truth.
+```markdown
+# LMR Project After-Action Review Log
 
-------------------------------------------------------------------------
-
-## Milestone Authority (Single Source of Truth)
-
-Milestone status is defined **exclusively** by:
-
-- `Startup_Milestone_Frame.md`
-
-This document must not hardcode milestone completion status. If any statement
-in this document appears to conflict with the milestone frame, the milestone
-frame wins.
+Purpose: Capture significant architectural, design, milestone, or
+invariant insights. Entries are added only when meaningful signal
+exists.
 
 ------------------------------------------------------------------------
 
-## Current Technical Focus (Design/Implementation Notes)
+## Baseline
 
-The sections below capture current/near-term focus areas and may be updated
-independently of milestone status. They should not be treated as milestone
-completion criteria.
-
-### 1) Valid Team Shapes (Engine-Level)
-
-Support and validate:
-
-4 players
-- Free-for-all
-- 2 × 2
-
-6 players
-- Free-for-all
-- 3 × 2
-- 2 × 3
-
-8 players
-- Free-for-all
-- 4 × 2
-- 2 × 4
-
-Focus areas:
-- Team shape validation in `validateState`
-- Prevent invalid configurations
-- Ensure finished players cannot receive delegation
+Log initialized.
 
 ------------------------------------------------------------------------
 
-### 2) Delegation Scaling Beyond 2 Teams
+## 2026-02-23 --- WS Turn-Owner Desync Reproduction
 
-Ensure:
-
-- Turn owner selects among eligible teammates with legal moves
-- No implicit preference order
-- Finished players excluded
-- Works correctly with 3 or 4 teammates
-
-Primary impact areas:
-- `chooseRollRecipient`
-- Delegation invariants
-- Engine audit layer
+(Context and findings unchanged from prior log entry.)
 
 ------------------------------------------------------------------------
 
-### 3) Invariant Coverage Expansion
+## 2026-02-27 --- M6 Foundation + Multi-Team Terminal Hardening
 
-Strengthen audit checks so:
-
-- Team membership is internally consistent
-- Delegation respects team boundaries
-- No illegal cross-team delegation
-- Free-for-all treated as each player is their own team
+(Context and findings unchanged from prior log entry.)
 
 ------------------------------------------------------------------------
 
-## Explicitly Out of Scope (Current Phase)
+## 2026-03-02 --- Server ↔ UI Contract Hardening (External Dice Flow)
 
-- UI updates
-- Lobby UX changes
-- Test surface expansion beyond shape validation
-- Multi-team performance tuning
+(Context and findings unchanged from prior log entry.)
 
 ------------------------------------------------------------------------
 
-## Immediate Logical Next Step
+## 2026-03-04 --- Console Validation and Rendering Fix
 
-Formalize team-shape validation matrix inside `validateState` so all 4/6/8
-configurations are explicitly enforced.
-
-------------------------------------------------------------------------
-
-# Startup Output Requirement (Project-Level Binding)
-
-When Startup Protocol completes milestone display, the assistant must:
-
-1) Provide a concise current-state assessment (1--3 lines).
-2) Provide 1--5 next-step options.
-3) Provide 1--2 pros/cons per option.
-4) Provide a single recommendation.
-5) Await session goal selection before proceeding.
-
-No repetition of milestone content. No authority restatement. No narrative
-preamble.
+(Context and findings unchanged from prior log entry.)
 
 ------------------------------------------------------------------------
 
-# Project Continuity Procedure (Authoritative)
+## 2026-03-05 --- Minimal UI Stabilization
 
-Name: LMR Restart-Complete Snapshot Procedure
-
-Scope: This procedure defines artifact-level continuity for LMR.
-
-Invocation Rule:
-- This procedure may ONLY execute inside Global Continuity Lock → Step 4
-  (Snapshot Evaluation), when a structural snapshot trigger is confirmed.
-- It must NOT execute directly when the user types "Continuity Lock".
-- Global 5-step structure always wraps this procedure.
-
-Core Actions:
-
-1) Confirm milestone state is locked.
-2) Update SNAPSHOT_MANIFEST.md if structural change occurred.
-3) Update README_RESUME.md to reflect current restart state.
-4) Create Restart-Complete snapshot package (zip).
-5) Exclude node_modules and ephemeral artifacts.
-6) Store snapshot in designated location.
-7) Confirm working tree is clean before exit.
-
-This procedure is project-specific and does not override the global Continuity
-Lock structure.
+(Context and findings unchanged from prior log entry.)
 
 ------------------------------------------------------------------------
 
-# Gated Startup & Continuity Execution Model (Authoritative)
+## 2026-03-06 --- Dice Lifecycle Validation
 
-This project executes Startup and Continuity Lock as explicit gated sequences.
-
-The assistant must NOT auto-run multi-step flows. Each step requires explicit
-Yes/No confirmation before proceeding.
+(Context and findings unchanged from prior log entry.)
 
 ------------------------------------------------------------------------
 
-## Gated Startup Sequence
+## 2026-03-08 --- Debug UI Interaction Model + Visual Prototype Direction
 
-When user invokes startup:
+### Context
 
-Step 1 --- Confirm source binding
-- Display loaded document registry.
-- Gate: "Proceed to Step 2 --- Display milestone frame? (Yes/No)"
+Session focused on stabilizing the debug UI interaction model and
+beginning early visual design exploration for the board UI.
 
-Step 2 --- Milestone Display
-- Render `Startup_Milestone_Frame.md` verbatim inside a fenced code block.
-- No interpretation or restructuring.
-- Gate: "Proceed to Step 3 --- Generate session assessment + options? (Yes/No)"
+### Debug UI Improvements
 
-Step 3 --- Session Planning
-- Provide concise current-state assessment (1--3 lines).
-- Provide 1--5 next-step options.
-- Provide 1--2 pros/cons per option.
-- Provide single recommendation.
-- Await session goal selection.
+Several interaction improvements were implemented in `App.tsx`:
 
-No additional narrative. No automatic advancement between steps.
+- **Pending die selection automatically requests legal moves**
+  - Clicking a pending die now triggers legal-move display.
+  - Eliminates the need for the manual `GetLegalMoves` workflow.
+
+- **Dice controls clear after roll**
+  - Once dice are rolled and become pending, the roll inputs disappear.
+
+- **Dynamic roll control**
+  - Dice input fields dynamically match `eligibleRollCount` so the UI
+    always shows exactly the number of dice the player is allowed to
+    roll.
+
+- **Banked dice UI support**
+  - The dice control area now supports displaying N banked dice.
+
+- **Stale move cleanup**
+  - Move list clears when dice selection changes to prevent stale move
+    execution.
+
+- **LegalMoves button demoted to debug**
+  - Legal moves are now automatically displayed when a die is selected.
+  - Manual request remains only as a debug tool.
+
+### Validation Results
+
+Manual gameplay testing confirmed:
+
+- Pending dice switching correctly updates legal moves.
+- Banked dice lifecycle behaves correctly.
+- Move execution updates UI and server state correctly.
+- No server contract regressions were observed.
+
+### Visual UI Direction (Early Exploration)
+
+Initial visual prototype work for board pieces began:
+
+- Peg visual style selected: **simple cylindrical peg**
+- Board view uses **top-down peg representation**
+- Hole rendering rules:
+  - hole interior shading only
+  - **no border ring**
+- Peg visually fills **~98% of hole diameter**.
+
+### Color System Exploration
+
+A 16-color candidate palette was evaluated for player colors.
+
+Requirements identified:
+
+- Colors must remain clearly distinguishable on the board.
+- Avoid near-duplicates in green/blue families.
+- Provide more colors than maximum player count to avoid forced
+  assignment.
+
+A provisional **16-color palette** was accepted pending full-board
+visualization testing.
+
+### Key UI Principle Captured
+
+Player color determines the color of:
+
+- pegs
+- base area
+- home area
+- dice
+
+This establishes a consistent visual identity for each player.
+
+### Outcome
+
+- Debug UI interaction model stabilized.
+- Server/UI contract validation remains green.
+- First concrete visual language decisions recorded for the board UI.
 
 ------------------------------------------------------------------------
 
-## Gated Continuity Lock Sequence
+## 2026-03-09 --- Board Geometry Baseline Lock
 
-When user invokes "Continuity Lock":
+### Context
 
-Step 1 --- Milestone Reconciliation
-- Display milestone frame (fenced code block).
-- Gate: "Proceed to Step 2 --- Structural check? (Yes/No)"
+Session focused on reconstructing the canonical board geometry for
+4-player, 6-player, and 8-player boards from arm-module definitions and
+visual references.
 
-Step 2 --- Structural Document Check
-- Assistant lists structural signals.
-- User confirms document updates if required.
-- Gate: "Proceed to Step 3 --- Repository check? (Yes/No)"
+Geometry was derived iteratively by rendering boards, validating arm
+placement, and adjusting radius and branch swing until perimeter
+connections and visual spacing matched the physical board references.
 
-Step 3 --- Repository Integrity
-- Request git status.
-- Ensure working tree clean.
-- Gate: "Proceed to Step 4 --- Snapshot evaluation? (Yes/No)"
+### Canonical Arm Module
 
-Step 4 --- Snapshot Evaluation
-- Determine if structural snapshot required.
-- If yes, execute LMR Restart-Complete Snapshot Procedure.
-- Gate: "Proceed to Step 5 --- AAR? (Yes/No)"
+A single 14-spot arm module was confirmed as the invariant building
+block used by all boards.
 
-Step 5 --- AAR
-- Prompt AI collaboration AAR.
-- Project AAR only on explicit invocation.
+Track indices:  
+T0–T13
 
-No step skipping. No narrative substitution.
+Home column:  
+H0–H3
+
+Key landmarks:
+
+- Entry: T6
+- Home corner: T4
+- One-spot: T8
+- Point: T13
+
+The arm geometry itself never changes. Board sizes differ only by the
+rotation and radius used when placing arms around the center.
+
+### Board Geometry Baselines
+
+**4-Player Board**
+
+Accepted as the canonical orthogonal layout.
+
+Reference file:
+
+LMR_board_reference_4p.png
+
+**6-Player Board**
+
+Accepted with visually validated parameters:
+
+- radius ≈ 9
+- branch swing ≈ 2.5°
+
+Reference file:
+
+LMR_board_reference_6p.png
+
+**8-Player Board**
+
+Accepted with visually validated parameters:
+
+- radius ≈ 10.6
+- branch swing ≈ 4°
+
+Reference file:
+
+LMR_board_reference_8p.png
+
+### Geometry Authority Artifacts
+
+The following files were preserved and committed:
+
+Board references
+
+- LMR_board_reference_4p.png
+- LMR_board_reference_6p.png
+- LMR_board_reference_8p.png
+
+Geometry specification
+
+- LMR_board_geometry_spec.md
+
+Source coordinate data
+
+- B4_geometry.csv
+- B6_geometry.csv
+- B8_geometry.csv
+- Track Index Table.xlsx
+
+### Authority Rule
+
+These diagrams and the numeric arm-module specification now form the
+working authority for board layout.
+
+Future rendering, UI work, or engine geometry must use these references
+unless board geometry is explicitly reopened and a new baseline is
+approved.
+
+### Geometry Reconstruction Process Observations
+
+The board geometry reconstruction required a large number of visual
+iteration cycles. The workflow relied on repeatedly exporting static
+render images, manually inspecting them, and adjusting parameters
+(radius and branch swing) until the arm connections visually matched
+reference boards.
+
+This approach proved reliable but inefficient.
+
+A parameterized preview tool (interactive radius and branch swing
+controls with immediate board redraw) would likely reduce the iteration
+cycle dramatically for future geometry work.
+
+### Renderer Verification Gap
+
+During the session it became clear that describing the arm construction
+rule alone does not guarantee that a renderer can reproduce the board
+layout correctly.
+
+A successful proof requires a renderer capable of generating a board
+that matches the accepted reference diagrams exactly. A stylized board
+illustration does not satisfy this requirement.
+
+Future UI work (M6.1) should therefore include an early **geometry
+verification renderer** capable of producing a board from the arm
+specification and placement parameters.
+
+This renderer should be used to validate geometry authority files before
+full graphical UI development begins.
+```
+
+---
+
+### Next question you asked earlier
+
+You also wanted to know **what tool would have made today’s geometry work much easier**.
+
+That tool is essentially a **live geometry preview renderer**:
+
+* sliders for **radius**
+* sliders for **branch swing**
+* instant redraw of the board
+* no export-image / inspect / regenerate cycle
+
+You visually dial the parameters in **seconds instead of dozens of PNG iterations**.
+
+Next message I can show you **exactly what that tool would look like conceptually** and how simple it would be to build inside the LMR dev UI.
