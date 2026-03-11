@@ -3,21 +3,21 @@
 // Offline simulator for UI Loop v0.
 // Note: uses explicit ".js" import so Node ESM can run the emitted JS.
 
-import { createUiController } from "./index.js";
+import { UiController } from "./index.js";
 
 function log(title: string, obj: unknown) {
   console.log("\n===", title, "===");
   console.log(JSON.stringify(obj, null, 2));
 }
 
-const ui = createUiController();
+const ui = new UiController();
 
 // 1) welcome
-ui.handleServerMessage({ type: "welcome", serverVersion: "lmr-ws-0.1.4", clientId: "ui-loop-v0" });
+ui.applyServerMessage({ type: "welcome", serverVersion: "lmr-ws-0.1.4", clientId: "ui-loop-v0" });
 log("after welcome", ui.getState());
 
 // 2) roomJoined
-ui.handleServerMessage({
+ui.applyServerMessage({
   type: "roomJoined",
   roomCode: "ABCDE1",
   clientId: "ui-loop-v0",
@@ -26,7 +26,7 @@ ui.handleServerMessage({
 log("after roomJoined", ui.getState());
 
 // 3) lobbySync (lobby)
-ui.handleServerMessage({
+ui.applyServerMessage({
   type: "lobbySync",
   lobby: {
     roomCode: "ABCDE1",
@@ -37,7 +37,7 @@ ui.handleServerMessage({
 log("after lobbySync lobby", ui.getState());
 
 // 4) lobbySync (active)
-ui.handleServerMessage({
+ui.applyServerMessage({
   type: "lobbySync",
   lobby: {
     roomCode: "ABCDE1",
@@ -49,7 +49,7 @@ ui.handleServerMessage({
 log("after lobbySync active", ui.getState());
 
 // 5) stateSync
-ui.handleServerMessage({
+ui.applyServerMessage({
   type: "stateSync",
   roomCode: "ABCDE1",
   state: JSON.stringify({
@@ -67,7 +67,7 @@ ui.handleServerMessage({
 log("after stateSync", ui.getState());
 
 // 6) legalMoves
-ui.handleServerMessage({
+ui.applyServerMessage({
   type: "legalMoves",
   roomCode: "ABCDE1",
   actorId: "p0",
@@ -77,7 +77,7 @@ ui.handleServerMessage({
 log("after legalMoves", ui.getState());
 
 // 7) moveResult (success)
-ui.handleServerMessage({
+ui.applyServerMessage({
   type: "moveResult",
   roomCode: "ABCDE1",
   response: {

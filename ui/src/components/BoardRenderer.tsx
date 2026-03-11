@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import {
   BOARD_GEOMETRY,
   CANONICAL_ARM,
@@ -12,6 +12,7 @@ type Point = {
 };
 
 type Spot = {
+  armIndex: number;
   id: string;
   x: number;
   y: number;
@@ -20,8 +21,20 @@ type Spot = {
   screenY: number;
 };
 
+export type BoardHolePlacement =
+  | { type: "track"; arm: number; spot: number }
+  | { type: "home"; arm: number; slot: number }
+  | { type: "base"; arm: number; slot: number };
+
+export type PegPlacement = {
+  pegId: string;
+  hole: BoardHolePlacement;
+  color?: string;
+};
+
 const VIEW_SIZE = 1000;
 const CENTER = VIEW_SIZE / 2;
+const DEFAULT_PEG_COLOR = "#2b6cb0";
 
 function degToRad(deg: number) {
   return (deg * Math.PI) / 180;
@@ -114,6 +127,7 @@ function buildArm(
     const screen = toScreen(world);
 
     return {
+      armIndex,
       ...spot,
       screenX: screen.x,
       screenY: screen.y,
@@ -121,10 +135,24 @@ function buildArm(
   });
 }
 
+function getSpotIdForHole(hole: BoardHolePlacement): string | null {
+  if (hole.type === "track") {
+    return `T${hole.spot}`;
+  }
+
+  if (hole.type === "home") {
+    return `H${hole.slot}`;
+  }
+
+  return null;
+}
+
 export default function BoardRenderer({
   arms = 4,
+  pegPlacements = [],
 }: {
   arms?: BoardArms;
+  pegPlacements?: PegPlacement[];
 }) {
   const geometry = BOARD_GEOMETRY[arms];
 
@@ -140,6 +168,40 @@ export default function BoardRenderer({
     ).flat();
   }, [arms, geometry]);
 
+  const placedPegs = useMemo(() => {
+    return pegPlacements
+      .map((peg) => {
+        const spotId = getSpotIdForHole(peg.hole);
+        if (!spotId) return null;
+
+        const spot = spots.find(
+          (candidate) =>
+            candidate.armIndex === peg.hole.arm && candidate.id === spotId
+        );
+
+        if (!spot) return null;
+
+        return {
+          ...peg,
+          screenX: spot.screenX,
+          screenY: spot.screenY,
+        };
+      })
+      .filter(
+        (
+          peg
+        ): peg is PegPlacement & {
+          screenX: number;
+          screenY: number;
+        } => peg !== null
+      );
+  }, [pegPlacements, spots]);
+
+  const pegRadius = Math.max(
+    geometry.holeRadius - 2.5,
+    geometry.holeRadius * 0.68
+  );
+
   return (
     <svg
       width="900"
@@ -152,15 +214,27 @@ export default function BoardRenderer({
     >
       <circle cx={CENTER} cy={CENTER} r={geometry.holeRadius} fill="#111" />
 
-      {spots.map((s, i) => (
+      {spots.map((s) => (
         <circle
-          key={i}
+          key={`${s.armIndex}-${s.id}`}
           cx={s.screenX}
           cy={s.screenY}
           r={geometry.holeRadius}
           fill={s.kind === "home" ? "#e7e7e7" : "#d7d7d7"}
           stroke="#888"
           strokeWidth="1.3"
+        />
+      ))}
+
+      {placedPegs.map((peg) => (
+        <circle
+          key={peg.pegId}
+          cx={peg.screenX}
+          cy={peg.screenY}
+          r={pegRadius}
+          fill={peg.color ?? DEFAULT_PEG_COLOR}
+          stroke="#222"
+          strokeWidth="1.4"
         />
       ))}
     </svg>

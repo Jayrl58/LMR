@@ -379,3 +379,33 @@ Result:
 • Geometry authority centralized  
 • Sandbox renderer validated for all board sizes  
 • Project ready to proceed with the gameplay board renderer in M6
+
+------------------------------------------------------------------------
+
+### POST-COMPLETE VALIDATION — 2026-03-11  
+(UI Render Pipeline Integration)
+
+The graphical board renderer was successfully integrated with the real
+engine game state pipeline.
+
+Rendering pipeline verified:
+
+GameState  
+→ mapGameStateToUI  
+→ mapPositionToBoardHole  
+→ BoardRenderer
+
+Structural UI changes implemented:
+
+• Demo message feed removed from App.tsx  
+• Demo state generation isolated into makeDemoUiState.ts  
+• App.tsx reduced to renderer composition layer  
+• Offline simulator updated to current UiController API  
+• Node type definitions installed for stable TypeScript builds
+
+Result:
+
+• BoardRenderer now renders peg placements derived from real mapped
+game state  
+• UI architecture prepared for live WebSocket message integration  
+• M6 graphical board UI work can proceed on top of the verified pipeline
