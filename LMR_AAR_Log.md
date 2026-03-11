@@ -300,3 +300,80 @@ This reduces formatting failure risk during long sessions.
 
 Continuity-lock procedures should allow a text-paste fallback when file
 uploads are temporarily unavailable.
+
+------------------------------------------------------------------------
+
+## 2026-03-11 --- UI Render Pipeline Integration
+
+### Context
+
+The graphical board renderer was integrated with the real engine game
+state pipeline, completing the first operational version of the board
+UI rendering path.
+
+Verified pipeline:
+
+GameState  
+→ mapGameStateToUI  
+→ mapPositionToBoardHole  
+→ BoardRenderer
+
+### Architecture Improvement
+
+The demo message feed previously embedded in `App.tsx` was extracted
+into a dedicated state generator:
+
+`makeDemoUiState.ts`
+
+`App.tsx` now acts strictly as a **renderer composition layer**.
+
+Resulting UI structure:
+
+App.tsx  
+→ makeDemoUiState.ts  
+→ BoardRenderer
+
+### What went well
+
+Separating the demo state generator from the renderer simplified the UI
+architecture and made the rendering pipeline easier to reason about.
+
+The pipeline now mirrors the eventual production structure where server
+WebSocket messages will drive the `UiController`.
+
+### Structural Insight
+
+This separation avoided a likely future refactor.
+
+If the demo message logic had remained embedded inside `App.tsx`,
+connecting the UI to the WebSocket stream later would have required
+rewriting the entire component. By isolating demo state generation
+early, the UI can now transition to live server events simply by
+replacing the demo generator with a real message source.
+
+This preserves the renderer layer and prevents architectural churn
+during later milestones.
+
+### Process Observation
+
+Several debugging iterations were initially spent resolving module
+imports because the project structure was inferred rather than derived
+from an existing working import.
+
+Future TypeScript debugging should begin by copying an import path from
+a working file (such as `App.tsx`) to avoid path-guessing cycles.
+
+### Environment Note
+
+TypeScript compilation required Node type definitions.
+
+Installed via:
+
+npm install --save-dev @types/node
+
+### Outcome
+
+• UI render pipeline verified operational  
+• Demo state generator isolated from renderer  
+• Architecture prepared for WebSocket-driven UI updates  
+• M6 graphical board UI work can proceed on top of a stable pipeline

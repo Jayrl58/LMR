@@ -1,6 +1,6 @@
 # LMR Project Startup
 
-Purpose:  
+Purpose:
 Provide the exact restart anchor for the next development session.
 
 This document is the authoritative session restart reference and should
@@ -29,17 +29,17 @@ npm run dev:server
 
 Server Runtime Endpoints:
 
-WebSocket server  
+WebSocket server
 ws://127.0.0.1:8787
 
-HTTP console  
+HTTP console
 http://127.0.0.1:8788
 
 Architecture Notes:
 
-• Node / TypeScript authoritative game engine  
-• WebSocket server controls all game state transitions  
-• UI clients act as state viewers and command senders only  
+• Node / TypeScript authoritative game engine
+• WebSocket server controls all game state transitions
+• UI clients act as state viewers and command senders only
 • Game state transitions occur exclusively through the server engine
 
 Board Geometry Authority:
@@ -48,8 +48,8 @@ Playpen/board_geometry/boardGeometry.ts
 
 This file contains:
 
-• BOARD_GEOMETRY calibration constants  
-• CANONICAL_ARM grid definition for the 14-spot arm module  
+• BOARD_GEOMETRY calibration constants
+• CANONICAL_ARM grid definition for the 14-spot arm module
 • TRACK_LOOP_ORDER traversal authority
 
 Both the sandbox renderer and gameplay renderer reference this shared
@@ -61,27 +61,68 @@ geometry authority.
 
 Completed during the previous session:
 
-• Geometry verification sandbox implemented  
-• Board geometry calibrated for 4-player, 6-player, and 8-player boards  
-• Geometry authority consolidated into shared source  
-• Sandbox renderer and gameplay renderer referencing same geometry definitions  
-• Initial BoardRenderer component implemented  
-• Renderer verified across all board sizes
+• UI render pipeline successfully integrated
+• BoardRenderer now renders peg placements derived from real GameState
+• Verified mapping pipeline:
+
+GameState
+→ mapGameStateToUI
+→ mapPositionToBoardHole
+→ BoardRenderer
+
+• Demo UI message feed isolated into `makeDemoUiState.ts`
+• `App.tsx` reduced to renderer composition layer
+• Offline UI simulator updated to current `UiController` API
+• Node type definitions installed to stabilize TypeScript compilation
 
 Result:
 
-Board geometry model and renderer foundation validated and ready for
-gameplay board integration.
+The graphical board UI now renders peg positions derived from the real
+engine state pipeline. The UI architecture is prepared for future
+WebSocket-driven state updates.
+
+------------------------------------------------------------------------
+
+## Current Technical State
+
+Operational rendering pipeline:
+
+GameState
+→ mapGameStateToUI
+→ mapPositionToBoardHole
+→ BoardRenderer
+
+Current UI structure:
+
+App.tsx
+→ makeDemoUiState.ts
+→ BoardRenderer
+
+Demo messages currently simulate server events through the
+`UiController`.
+
+This structure intentionally mirrors the future architecture where
+WebSocket messages will drive the same controller.
 
 ------------------------------------------------------------------------
 
 ## Next Action
 
-Begin gameplay board renderer integration using the verified
-BoardRenderer component and the shared geometry authority.
+Replace the demo UI state generator with a live WebSocket message feed.
 
-Initial objective:
+Objective:
 
-Render the canonical board layout using the calibrated geometry
-parameters and confirm correct peg and hole placement for all supported
-board sizes.
+Connect the UI layer to the running server so that incoming server
+messages drive the `UiController` directly.
+
+Target architecture:
+
+WebSocket
+→ UiController.applyServerMessage()
+→ UI state update
+→ BoardRenderer
+
+Initial task:
+
+Implement a WebSocket connection in the UI client that receives server
+messages and forwards them to the `UiController` message handler.
