@@ -136,14 +136,8 @@ function buildArm(
 }
 
 function getSpotIdForHole(hole: BoardHolePlacement): string | null {
-  if (hole.type === "track") {
-    return `T${hole.spot}`;
-  }
-
-  if (hole.type === "home") {
-    return `H${hole.slot}`;
-  }
-
+  if (hole.type === "track") return `T${hole.spot}`;
+  if (hole.type === "home") return `H${hole.slot}`;
   return null;
 }
 
@@ -154,19 +148,22 @@ export default function BoardRenderer({
   arms?: BoardArms;
   pegPlacements?: PegPlacement[];
 }) {
-  const geometry = BOARD_GEOMETRY[arms];
+  const safeArms: BoardArms =
+    arms === 4 || arms === 6 || arms === 8 ? arms : 4;
+
+  const geometry = BOARD_GEOMETRY[safeArms];
 
   const spots = useMemo(() => {
-    return Array.from({ length: arms }, (_, armIndex) =>
+    return Array.from({ length: safeArms }, (_, armIndex) =>
       buildArm(
         armIndex,
-        arms,
+        safeArms,
         geometry.t6Radius,
         geometry.spotSpacing,
         geometry.branchSwingDeg
       )
     ).flat();
-  }, [arms, geometry]);
+  }, [safeArms, geometry]);
 
   const placedPegs = useMemo(() => {
     return pegPlacements

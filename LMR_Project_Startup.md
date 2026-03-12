@@ -61,68 +61,98 @@ geometry authority.
 
 Completed during the previous session:
 
-• UI render pipeline successfully integrated
-• BoardRenderer now renders peg placements derived from real GameState
-• Verified mapping pipeline:
+• Replaced demo-only UI flow with a live WebSocket-connected graphical
+  debug client
+• Verified board rendering from live server state rather than demo data
+• Verified end-to-end interaction loop inside the graphical UI:
 
-GameState
-→ mapGameStateToUI
-→ mapPositionToBoardHole
-→ BoardRenderer
+connect
+joinRoom
+startGame
+roll
+legalMoves
+move
+moveResult
 
-• Demo UI message feed isolated into `makeDemoUiState.ts`
-• `App.tsx` reduced to renderer composition layer
-• Offline UI simulator updated to current `UiController` API
-• Node type definitions installed to stabilize TypeScript compilation
+• Added bounded debug-console controls to App.tsx for:
+  - Connect / Disconnect
+  - Join Room / Leave Room
+  - Start Game
+  - Reset Game
+  - Roll
+  - Get Legal Moves
+• Added state-driven display for:
+  - Current Actor
+  - Awaiting Dice
+  - Pending Dice
+  - Banked Dice
+• Added legal-move buttons for direct move execution
+• Added pending-die selection buttons so individual pending dice can be
+  inspected intentionally
+• Added multi-die input support for roll/getLegalMoves/move payloads
+• Refactored App.tsx into message-router style handlers for server
+  messages
+• Resolved compile issues in mapPositionToBoardHole.ts and stabilized
+  the current debug UI build
 
 Result:
 
-The graphical board UI now renders peg positions derived from the real
-engine state pipeline. The UI architecture is prepared for future
-WebSocket-driven state updates.
+The graphical UI now functions as a bounded debug client capable of
+joining a room, starting a game, rolling, requesting legal moves,
+submitting moves, and rendering live peg movement from the authoritative
+server.
 
 ------------------------------------------------------------------------
 
 ## Current Technical State
 
-Operational rendering pipeline:
+Operational live UI pipeline:
 
-GameState
+WebSocket
+→ App.tsx message handlers
+→ state mapping
 → mapGameStateToUI
 → mapPositionToBoardHole
 → BoardRenderer
 
-Current UI structure:
+Current graphical debug UI capabilities:
 
-App.tsx
-→ makeDemoUiState.ts
-→ BoardRenderer
+• Connect / Disconnect
+• Join Room / Leave Room
+• Start Game
+• Reset Game
+• Roll
+• Get Legal Moves
+• Click legal move buttons to submit moves
+• View Current Actor / Pending Dice / Banked Dice
+• Inspect pending dice individually
 
-Demo messages currently simulate server events through the
-`UiController`.
+Current known limitation:
 
-This structure intentionally mirrors the future architecture where
-WebSocket messages will drive the same controller.
+The debug UI still makes it too easy to reconnect into a previously used
+active room, which can make the client appear to resume mid-game instead
+of starting from a clean test state.
 
 ------------------------------------------------------------------------
 
 ## Next Action
 
-Replace the demo UI state generator with a live WebSocket message feed.
+Refine debug UI room/session lifecycle behavior.
 
 Objective:
 
-Connect the UI layer to the running server so that incoming server
-messages drive the `UiController` directly.
+Prevent accidental reconnection into stale active room state and make
+fresh-room startup behavior explicit and reliable.
 
-Target architecture:
+Immediate next task:
 
-WebSocket
-→ UiController.applyServerMessage()
-→ UI state update
-→ BoardRenderer
+Update the graphical debug client so room handling is cleaner and less
+error-prone, then re-verify the fresh-room startup flow using a newly
+created lobby room.
 
-Initial task:
+Initial focus:
 
-Implement a WebSocket connection in the UI client that receives server
-messages and forwards them to the `UiController` message handler.
+• Prevent accidental reuse of stale room state
+• Clarify room lifecycle controls in the debug client
+• Re-verify clean new-room start flow
+• Preserve current working gameplay loop while refining the UX

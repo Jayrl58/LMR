@@ -41,11 +41,39 @@ Expand milestones only when explicitly requested
 ✓ M2 — Server Authority Layer  
 ✓ M3 — Pregame Options  
 ✓ M4 — Team Model Expansion  
-→ M5 — Game Setup UI  
+✓ M5 — Game Setup UI  
 ○ M6 — Graphical Board UI  
 → M7 — Gameplay Interaction Layer  
 → M8 — Game Completion & Results  
 → M9 — Production Readiness
+
+------------------------------------------------------------------------
+
+## M6 — Graphical Board UI (Expanded Status)
+
+M6 represents the transition from server-only validation tools to a
+functional graphical client capable of rendering game state and
+interacting with the authoritative server engine.
+
+Current atomic milestone state:
+
+✓ M6.1 — WebSocket client connection  
+✓ M6.2 — Board renderer integration  
+✓ M6.3 — Roll / legalMoves / move interaction loop  
+✓ M6.4 — Dice contract compatibility (double-dice + bank lifecycle)  
+✓ M6.5 — Functional gameplay loop validation  
+○ M6.6 — Debug UI console refinement
+
+Remaining M6.6 scope:
+
+• Prevent accidental reconnect into stale active rooms  
+• Improve fresh-room startup behavior  
+• Clarify room lifecycle controls (join / leave / reset)  
+• Finalize multi-die inspection UX for debug panel
+
+Estimated remaining effort for M6.6:
+
+~2–3 hours
 
 ------------------------------------------------------------------------
 
