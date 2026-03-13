@@ -1,7 +1,7 @@
 // src/engine/legalMoves.ts
 
 import type { Capture, GameState, Move, PegIndex, PlayerId, SpotRef } from "../types";
-import { BASE_ENTRY_ROLLS, normalizeTrackIndex } from "./constants";
+import { ARM_LENGTH, BASE_ENTRY_ROLLS, normalizeTrackIndex, trackLengthForPlayerCount } from "./constants";
 import { getTrackEntryIndex } from "./boardMapping";
 import { getHomeEntryTrackIndex } from "./homeMapping";
 import { countFinishedPegs, findOccupant, spotsEqual } from "./stateUtils";
@@ -25,13 +25,18 @@ function boardArmCountFor(state: GameState): 4 | 6 | 8 {
   return 8;
 }
 
+function trackLengthForState(state: GameState): number {
+  return trackLengthForPlayerCount(state.config.playerCount);
+}
+
 // In this snapshot, seat->entry mapping is seat*14. (Matches current boardMapping placeholder.)
 function pointIndicesForBoard(state: GameState): number[] {
   const arms = boardArmCountFor(state);
+  const trackLength = trackLengthForState(state);
   const points: number[] = [];
   for (let seat = 0; seat < arms; seat++) {
-    const entryIdx = seat * 14;
-    points.push(normalizeTrackIndex(entryIdx + 13));
+    const entryIdx = seat * ARM_LENGTH;
+    points.push(normalizeTrackIndex(entryIdx + 13, trackLength));
   }
   return points;
 }
@@ -51,10 +56,11 @@ function buildTrackPathFrom(
   startIdx: number,
   steps: number,
   homeEntryIdx: number,
-  actor: PlayerId
+  actor: PlayerId,
+  trackLength: number
 ): SpotRef[] {
-  const path: SpotRef[] = [{ zone: "track", index: normalizeTrackIndex(startIdx) }];
-  let idx = normalizeTrackIndex(startIdx);
+  const path: SpotRef[] = [{ zone: "track", index: normalizeTrackIndex(startIdx, trackLength) }];
+  let idx = normalizeTrackIndex(startIdx, trackLength);
   let inHome = false;
   let homePos: 0 | 1 | 2 | 3 = 0;
 
@@ -65,7 +71,7 @@ function buildTrackPathFrom(
         homePos = 0;
         path.push({ zone: "home", playerId: actor, index: homePos });
       } else {
-        idx = normalizeTrackIndex(idx + 1);
+        idx = normalizeTrackIndex(idx + 1, trackLength);
         path.push({ zone: "track", index: idx });
       }
     } else {
@@ -172,6 +178,7 @@ export function listLegalMovesForPlayer(
 
   const moves: Move[] = [];
   const pegs = state.pegStates[actorPlayerId];
+  const trackLength = trackLengthForState(state);
 
   const entryIdx = getTrackEntryIndex(state, actorPlayerId);
   const homeEntryIdx = getHomeEntryTrackIndex(state, actorPlayerId);
@@ -187,10 +194,10 @@ export function listLegalMovesForPlayer(
     // - roll 6 enters on the player's Point (entryIdx + 13)
     const destIdx =
       steps === 6
-        ? normalizeTrackIndex(entryIdx + 13)
+        ? normalizeTrackIndex(entryIdx + 13, trackLength)
         : steps === 1
-          ? normalizeTrackIndex(entryIdx + 8)
-          : entryIdx; // fallback for any other entry roll (if ever enabled)
+          ? normalizeTrackIndex(entryIdx + 8, trackLength)
+          : normalizeTrackIndex(entryIdx, trackLength); // fallback for any other entry roll (if ever enabled)
 
     for (const peg of pegs) {
       if (peg.position.zone !== "base") continue;
@@ -228,7 +235,7 @@ export function listLegalMovesForPlayer(
     let path: SpotRef[];
 
     if (peg.position.zone === "track") {
-      path = buildTrackPathFrom(peg.position.index, steps, homeEntryIdx, actorPlayerId);
+      path = buildTrackPathFrom(peg.position.index, steps, homeEntryIdx, actorPlayerId, trackLength);
     } else if (peg.position.zone === "home") {
       const start = peg.position.index;
       path = [{ ...peg.position }];

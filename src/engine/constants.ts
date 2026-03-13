@@ -1,13 +1,18 @@
 // src/engine/constants.ts
 
-// Placeholder constants used by this snapshot's test suite.
-// Track length assumes 4 arms * 14 spaces (56). Tests only rely on small indices and modular increment.
-export const TRACK_LENGTH = 56;
+// Shared track geometry constants for all supported boards.
+export const ARM_LENGTH = 14;
+
+export function trackLengthForPlayerCount(playerCount: number): number {
+  if (playerCount <= 4) return 4 * ARM_LENGTH;
+  if (playerCount <= 6) return 6 * ARM_LENGTH;
+  return 8 * ARM_LENGTH;
+}
 
 // Base entry is allowed on these rolls.
 export const BASE_ENTRY_ROLLS: readonly number[] = [1, 6];
 
-export function normalizeTrackIndex(i: number): number {
-  const m = i % TRACK_LENGTH;
-  return m < 0 ? m + TRACK_LENGTH : m;
+export function normalizeTrackIndex(i: number, trackLength: number): number {
+  const m = i % trackLength;
+  return m < 0 ? m + trackLength : m;
 }

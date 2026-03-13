@@ -24,7 +24,8 @@ type Spot = {
 export type BoardHolePlacement =
   | { type: "track"; arm: number; spot: number }
   | { type: "home"; arm: number; slot: number }
-  | { type: "base"; arm: number; slot: number };
+  | { type: "base"; arm: number; slot: number }
+  | { type: "center" };
 
 export type PegPlacement = {
   pegId: string;
@@ -168,6 +169,14 @@ export default function BoardRenderer({
   const placedPegs = useMemo(() => {
     return pegPlacements
       .map((peg) => {
+        if (peg.hole.type === "center") {
+          return {
+            ...peg,
+            screenX: CENTER,
+            screenY: CENTER,
+          };
+        }
+
         const spotId = getSpotIdForHole(peg.hole);
         if (!spotId) return null;
 
@@ -209,7 +218,14 @@ export default function BoardRenderer({
         background: "#fafafa",
       }}
     >
-      <circle cx={CENTER} cy={CENTER} r={geometry.holeRadius} fill="#111" />
+      <circle
+        cx={CENTER}
+        cy={CENTER}
+        r={geometry.holeRadius}
+        fill="#d7d7d7"
+        stroke="#888"
+        strokeWidth="1.3"
+      />
 
       {spots.map((s) => (
         <circle

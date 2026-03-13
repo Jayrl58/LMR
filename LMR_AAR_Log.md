@@ -59,48 +59,45 @@ beginning early visual design exploration for the board UI.
 
 Several interaction improvements were implemented in `App.tsx`:
 
-- **Pending die selection automatically requests legal moves**
-  - Clicking a pending die now triggers legal-move display.
-  - Eliminates the need for the manual `GetLegalMoves` workflow.
-
-- **Dice controls clear after roll**
-  - Once dice are rolled and become pending, the roll inputs disappear.
-
-- **Dynamic roll control**
-  - Dice input fields dynamically match `eligibleRollCount` so the UI
-    always shows exactly the number of dice the player is allowed to
-    roll.
-
-- **Banked dice UI support**
-  - The dice control area now supports displaying N banked dice.
-
-- **Stale move cleanup**
-  - Move list clears when dice selection changes to prevent stale move
-    execution.
-
-- **LegalMoves button demoted to debug**
-  - Legal moves are now automatically displayed when a die is selected.
-  - Manual request remains only as a debug tool.
+-   **Pending die selection automatically requests legal moves**
+    -   Clicking a pending die now triggers legal-move display.
+    -   Eliminates the need for the manual `GetLegalMoves` workflow.
+-   **Dice controls clear after roll**
+    -   Once dice are rolled and become pending, the roll inputs
+        disappear.
+-   **Dynamic roll control**
+    -   Dice input fields dynamically match `eligibleRollCount` so the
+        UI always shows exactly the number of dice the player is allowed
+        to roll.
+-   **Banked dice UI support**
+    -   The dice control area now supports displaying N banked dice.
+-   **Stale move cleanup**
+    -   Move list clears when dice selection changes to prevent stale
+        move execution.
+-   **LegalMoves button demoted to debug**
+    -   Legal moves are now automatically displayed when a die is
+        selected.
+    -   Manual request remains only as a debug tool.
 
 ### Validation Results
 
 Manual gameplay testing confirmed:
 
-- Pending dice switching correctly updates legal moves.
-- Banked dice lifecycle behaves correctly.
-- Move execution updates UI and server state correctly.
-- No server contract regressions were observed.
+-   Pending dice switching correctly updates legal moves.
+-   Banked dice lifecycle behaves correctly.
+-   Move execution updates UI and server state correctly.
+-   No server contract regressions were observed.
 
 ### Visual UI Direction (Early Exploration)
 
 Initial visual prototype work for board pieces began:
 
-- Peg visual style selected: **simple cylindrical peg**
-- Board view uses **top-down peg representation**
-- Hole rendering rules:
-  - hole interior shading only
-  - **no border ring**
-- Peg visually fills **~98% of hole diameter**.
+-   Peg visual style selected: **simple cylindrical peg**
+-   Board view uses **top-down peg representation**
+-   Hole rendering rules:
+    -   hole interior shading only
+    -   **no border ring**
+-   Peg visually fills **\~98% of hole diameter**.
 
 ### Color System Exploration
 
@@ -108,10 +105,10 @@ A 16-color candidate palette was evaluated for player colors.
 
 Requirements identified:
 
-- Colors must remain clearly distinguishable on the board.
-- Avoid near-duplicates in green/blue families.
-- Provide more colors than maximum player count to avoid forced
-  assignment.
+-   Colors must remain clearly distinguishable on the board.
+-   Avoid near-duplicates in green/blue families.
+-   Provide more colors than maximum player count to avoid forced
+    assignment.
 
 A provisional **16-color palette** was accepted pending full-board
 visualization testing.
@@ -120,18 +117,18 @@ visualization testing.
 
 Player color determines the color of:
 
-- pegs
-- base area
-- home area
-- dice
+-   pegs
+-   base area
+-   home area
+-   dice
 
 This establishes a consistent visual identity for each player.
 
 ### Outcome
 
-- Debug UI interaction model stabilized.
-- Server/UI contract validation remains green.
-- First concrete visual language decisions recorded for the board UI.
+-   Debug UI interaction model stabilized.
+-   Server/UI contract validation remains green.
+-   First concrete visual language decisions recorded for the board UI.
 
 ------------------------------------------------------------------------
 
@@ -152,18 +149,18 @@ connections and visual spacing matched the physical board references.
 A single 14-spot arm module was confirmed as the invariant building
 block used by all boards.
 
-Track indices:  
-T0–T13
+Track indices:\
+T0--T13
 
-Home column:  
-H0–H3
+Home column:\
+H0--H3
 
 Key landmarks:
 
-- Entry: T6
-- Home corner: T4
-- One-spot: T8
-- Point: T13
+-   Entry: T6
+-   Home corner: T4
+-   One-spot: T8
+-   Point: T13
 
 The arm geometry itself never changes. Board sizes differ only by the
 rotation and radius used when placing arms around the center.
@@ -182,8 +179,8 @@ LMR_board_reference_4p.png
 
 Accepted with visually validated parameters:
 
-- radius ≈ 9
-- branch swing ≈ 2.5°
+-   radius ≈ 9
+-   branch swing ≈ 2.5°
 
 Reference file:
 
@@ -193,8 +190,8 @@ LMR_board_reference_6p.png
 
 Accepted with visually validated parameters:
 
-- radius ≈ 10.6
-- branch swing ≈ 4°
+-   radius ≈ 10.6
+-   branch swing ≈ 4°
 
 Reference file:
 
@@ -206,20 +203,20 @@ The following files were preserved and committed:
 
 Board references
 
-- LMR_board_reference_4p.png
-- LMR_board_reference_6p.png
-- LMR_board_reference_8p.png
+-   LMR_board_reference_4p.png
+-   LMR_board_reference_6p.png
+-   LMR_board_reference_8p.png
 
 Geometry specification
 
-- LMR_board_geometry_spec.md
+-   LMR_board_geometry_spec.md
 
 Source coordinate data
 
-- B4_geometry.csv
-- B6_geometry.csv
-- B8_geometry.csv
-- Track Index Table.xlsx
+-   B4_geometry.csv
+-   B6_geometry.csv
+-   B8_geometry.csv
+-   Track Index Table.xlsx
 
 ### Authority Rule
 
@@ -293,8 +290,8 @@ Manual text pasting was required to complete milestone confirmation.
 
 When generating implementation files, responses should be restricted to:
 
-- file name
-- single clean code block
+-   file name
+-   single clean code block
 
 This reduces formatting failure risk during long sessions.
 
@@ -308,14 +305,14 @@ uploads are temporarily unavailable.
 ### Context
 
 The graphical board renderer was integrated with the real engine game
-state pipeline, completing the first operational version of the board
-UI rendering path.
+state pipeline, completing the first operational version of the board UI
+rendering path.
 
 Verified pipeline:
 
-GameState  
-→ mapGameStateToUI  
-→ mapPositionToBoardHole  
+GameState\
+→ mapGameStateToUI\
+→ mapPositionToBoardHole\
 → BoardRenderer
 
 ### Architecture Improvement
@@ -329,8 +326,8 @@ into a dedicated state generator:
 
 Resulting UI structure:
 
-App.tsx  
-→ makeDemoUiState.ts  
+App.tsx\
+→ makeDemoUiState.ts\
 → BoardRenderer
 
 ### What went well
@@ -373,7 +370,74 @@ npm install --save-dev @types/node
 
 ### Outcome
 
-• UI render pipeline verified operational  
-• Demo state generator isolated from renderer  
-• Architecture prepared for WebSocket-driven UI updates  
+• UI render pipeline verified operational\
+• Demo state generator isolated from renderer\
+• Architecture prepared for WebSocket-driven UI updates\
 • M6 graphical board UI work can proceed on top of a stable pipeline
+
+------------------------------------------------------------------------
+
+## 2026-03-13 --- Board-Length Normalization Discovery
+
+### Context
+
+During gameplay testing of the graphical debug UI on an 8-player board,
+legal moves generated for center exits appeared duplicated rather than
+covering the full set of point exits.
+
+Initial symptoms:
+
+• center exit moves repeated only the first four points\
+• expected exits: 13, 27, 41, 55, 69, 83, 97, 111\
+• observed exits: 13, 27, 41, 55 (repeated)
+
+Investigation revealed that the engine still contained a fixed
+`TRACK_LENGTH = 56` normalization assumption derived from the 4-player
+board.
+
+### Root Cause
+
+Track index normalization inside the engine used a constant track length
+instead of deriving the correct track length from the board
+configuration.
+
+This caused indices beyond 56 to wrap incorrectly, producing duplicated
+legal moves on larger boards.
+
+### Resolution
+
+Engine normalization logic was updated to use board-size--aware track
+length derived from the canonical arm module:
+
+14 track spots per arm × number of arms.
+
+This allows correct normalization for:
+
+• 4-player board\
+• 6-player board\
+• 8-player board
+
+### Validation
+
+Graphical debug UI gameplay confirmed:
+
+• center exits correctly generated for all 8 points on the 8-player
+board\
+• exits removed when occupied by the player's own pegs\
+• pegs in the highest home spot produce no legal moves\
+• center peg rendering and board rendering remained correct
+
+### Operational Note
+
+During debugging, engine changes appeared ineffective until the
+development server was restarted.
+
+Reminder:
+
+npm run dev:server
+
+### Outcome
+
+• Hidden board-size assumption removed from engine\
+• Track normalization now scales with board size\
+• Correct center exit generation verified for 8-player boards

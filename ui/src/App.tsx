@@ -39,6 +39,8 @@ type AppStateSetters = {
   setLegalMoveOptions: Dispatch<SetStateAction<LegalMoveOption[]>>;
   setSelectedPendingDie: Dispatch<SetStateAction<string>>;
   setLog: Dispatch<SetStateAction<string[]>>;
+  setRoomCode: Dispatch<SetStateAction<string>>;
+  setJoinedRoomCode: Dispatch<SetStateAction<string>>;
 };
 
 const WS_URL = "ws://127.0.0.1:8787";
@@ -94,7 +96,7 @@ function isGameState(value: unknown): value is GameState {
 
 function buildBoardViewFromGameState(gameState: GameState): BoardViewState {
   const uiState = mapGameStateToUI(gameState);
-  const arms = normalizeArms(uiState.players.length);
+  const arms = normalizeArms(gameState.config.playerCount);
 
   const playerSeatById = new Map<string, number>(
     uiState.players.map((player) => [String(player.playerId), player.seat])
@@ -197,10 +199,8 @@ function extractPendingDice(turn: unknown): PendingDieView[] {
     .filter((pd) => pd.value >= 1 && pd.value <= 6);
 }
 
-function resetLocalUi(setters: AppStateSetters): void {
+function resetSessionUi(setters: AppStateSetters): void {
   setters.setBoardView(EMPTY_BOARD_VIEW);
-  setters.setConnected(false);
-  setters.setClientId("");
   setters.setPlayerId("");
   setters.setPhase("");
   setters.setCurrentActor("");
@@ -208,11 +208,16 @@ function resetLocalUi(setters: AppStateSetters): void {
   setters.setPendingDice([]);
   setters.setBankedDice(0);
   setters.setRollDiceInput("1");
-  setters.setPlayerCountInput("2");
-  setters.setDoubleDice(true);
-  setters.setKillRoll(false);
   setters.setLegalMoveOptions([]);
   setters.setSelectedPendingDie("");
+}
+
+function resetConnectionUi(setters: AppStateSetters): void {
+  resetSessionUi(setters);
+  setters.setConnected(false);
+  setters.setClientId("");
+  setters.setJoinedRoomCode("");
+  setters.setRoomCode("");
   setters.setLog([]);
 }
 
@@ -275,10 +280,22 @@ function handleWelcome(message: Record<string, unknown>, setters: AppStateSetter
   }
 }
 
-function handleRoomJoined(message: Record<string, unknown>, setters: AppStateSetters) {
+function handleRoomJoined(
+  message: Record<string, unknown>,
+  setters: AppStateSetters,
+  fallbackRoomCode: string
+) {
   if (typeof message.playerId === "string") {
     setters.setPlayerId(message.playerId);
   }
+
+  const joinedRoomCode =
+    typeof message.roomCode === "string" && message.roomCode.trim()
+      ? message.roomCode.trim().toUpperCase()
+      : fallbackRoomCode;
+
+  setters.setJoinedRoomCode(joinedRoomCode);
+  setters.setRoomCode(joinedRoomCode);
 }
 
 function handleLobbySync(message: Record<string, unknown>, setters: AppStateSetters) {
@@ -341,11 +358,20 @@ function handleMoveResult(message: Record<string, unknown>, setters: AppStateSet
   }
 }
 
+function handleLeaveRoomAck(setters: AppStateSetters) {
+  resetSessionUi(setters);
+  setters.setJoinedRoomCode("");
+}
+
 function handleError(_message: Record<string, unknown>, _setters: AppStateSetters) {
   return;
 }
 
-function handleServerMessage(message: unknown, setters: AppStateSetters) {
+function handleServerMessage(
+  message: unknown,
+  setters: AppStateSetters,
+  fallbackRoomCode: string
+) {
   if (!isObject(message) || typeof message.type !== "string") return;
 
   switch (message.type) {
@@ -353,7 +379,10 @@ function handleServerMessage(message: unknown, setters: AppStateSetters) {
       handleWelcome(message, setters);
       return;
     case "roomJoined":
-      handleRoomJoined(message, setters);
+      handleRoomJoined(message, setters, fallbackRoomCode);
+      return;
+    case "leaveRoomAck":
+      handleLeaveRoomAck(setters);
       return;
     case "lobbySync":
       handleLobbySync(message, setters);
@@ -375,11 +404,20 @@ function handleServerMessage(message: unknown, setters: AppStateSetters) {
   }
 }
 
+function generateRoomCode(): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from({ length: 6 }, () => {
+    const index = Math.floor(Math.random() * alphabet.length);
+    return alphabet[index];
+  }).join("");
+}
+
 export default function App() {
   const [boardView, setBoardView] = useState<BoardViewState>(EMPTY_BOARD_VIEW);
 
   const [connected, setConnected] = useState(false);
-  const [roomCode, setRoomCode] = useState("T98EES");
+  const [roomCode, setRoomCode] = useState("");
+  const [joinedRoomCode, setJoinedRoomCode] = useState("");
   const [rollDiceInput, setRollDiceInput] = useState("1");
   const [playerCountInput, setPlayerCountInput] = useState("2");
   const [doubleDice, setDoubleDice] = useState(true);
@@ -399,6 +437,7 @@ export default function App() {
   const [log, setLog] = useState<string[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const pendingJoinRoomCodeRef = useRef("");
 
   function appendLog(msg: string) {
     setLog((prev) => [...prev.slice(-100), msg]);
@@ -421,7 +460,14 @@ export default function App() {
     setLegalMoveOptions,
     setSelectedPendingDie,
     setLog,
+    setRoomCode,
+    setJoinedRoomCode,
   };
+
+  const canJoinRoom = connected && !joinedRoomCode;
+  const canLeaveRoom = connected && !!joinedRoomCode && phase !== "active";
+  const canStartGame = connected && !!joinedRoomCode;
+  const canSendGameplayCommand = connected && !!joinedRoomCode;
 
   function connect() {
     if (wsRef.current) return;
@@ -437,7 +483,7 @@ export default function App() {
     ws.onmessage = (event) => {
       const message = JSON.parse(event.data);
       appendLog(safeStringify(message));
-      handleServerMessage(message, setters);
+      handleServerMessage(message, setters, pendingJoinRoomCodeRef.current);
     };
 
     ws.onerror = (event) => {
@@ -446,8 +492,8 @@ export default function App() {
 
     ws.onclose = () => {
       wsRef.current = null;
-      resetLocalUi(setters);
-      setRoomCode((prev) => prev || "T98EES");
+      pendingJoinRoomCodeRef.current = "";
+      resetConnectionUi(setters);
     };
   }
 
@@ -458,8 +504,8 @@ export default function App() {
       return;
     }
 
-    resetLocalUi(setters);
-    setRoomCode((prev) => prev || "T98EES");
+    pendingJoinRoomCodeRef.current = "";
+    resetConnectionUi(setters);
   }
 
   function clearLog() {
@@ -477,20 +523,65 @@ export default function App() {
     appendLog("SEND: " + JSON.stringify(msg));
   }
 
+  function createFreshRoom() {
+    if (joinedRoomCode) {
+      appendLog("Leave the current room before creating a fresh room.");
+      return;
+    }
+
+    const freshRoomCode = generateRoomCode();
+    pendingJoinRoomCodeRef.current = "";
+    resetSessionUi(setters);
+    setJoinedRoomCode("");
+    setRoomCode(freshRoomCode);
+    appendLog(`Fresh room prepared: ${freshRoomCode}`);
+  }
+
   function joinRoom() {
+    const trimmedRoomCode = roomCode.trim().toUpperCase();
+
+    if (!trimmedRoomCode) {
+      appendLog("Create or enter a room code before joining.");
+      return;
+    }
+
+    if (!canJoinRoom) {
+      appendLog("Already in a room. Leave the current room first.");
+      return;
+    }
+
+    pendingJoinRoomCodeRef.current = trimmedRoomCode;
+    resetSessionUi(setters);
+    setRoomCode(trimmedRoomCode);
+
     send({
       type: "joinRoom",
-      roomCode,
+      roomCode: trimmedRoomCode,
     });
   }
 
   function leaveRoom() {
+    if (!canLeaveRoom) {
+      appendLog("Not currently joined to a room.");
+      return;
+    }
+
     send({
       type: "leaveRoom",
     });
+
+    pendingJoinRoomCodeRef.current = "";
+    resetSessionUi(setters);
+    setJoinedRoomCode("");
+    appendLog("Left room locally; awaiting server sync.");
   }
 
   function startGame() {
+    if (!canStartGame) {
+      appendLog("Join a room before starting a game.");
+      return;
+    }
+
     const playerCount = Number(playerCountInput);
     if (!Number.isInteger(playerCount) || playerCount < 2 || playerCount > 8) {
       appendLog("Invalid player count. Use 2-8.");
@@ -508,6 +599,11 @@ export default function App() {
   }
 
   function resetGame() {
+    if (!canSendGameplayCommand) {
+      appendLog("Join a room before resetting a game.");
+      return;
+    }
+
     send({
       type: "rematchConsent",
       consent: false,
@@ -515,6 +611,11 @@ export default function App() {
   }
 
   function requestLegalMovesForDice(dice: number[]) {
+    if (!canSendGameplayCommand) {
+      appendLog("Join a room before requesting legal moves.");
+      return;
+    }
+
     send({
       type: "getLegalMoves",
       actorId: currentActor,
@@ -529,6 +630,11 @@ export default function App() {
   }
 
   function sendRoll() {
+    if (!canSendGameplayCommand) {
+      appendLog("Join a room before rolling.");
+      return;
+    }
+
     const dice = parseDiceInput(rollDiceInput);
     if (!dice) {
       appendLog("Invalid dice input. Use comma-separated values 1-6.");
@@ -543,6 +649,11 @@ export default function App() {
   }
 
   function getLegalMoves() {
+    if (!canSendGameplayCommand) {
+      appendLog("Join a room before requesting legal moves.");
+      return;
+    }
+
     const dice = selectedPendingDie
       ? [Number(selectedPendingDie)]
       : pendingDice.length > 0
@@ -558,6 +669,11 @@ export default function App() {
   }
 
   function sendMove(option: LegalMoveOption) {
+    if (!canSendGameplayCommand) {
+      appendLog("Join a room before sending a move.");
+      return;
+    }
+
     let move: unknown;
     try {
       move = JSON.parse(option.value);
@@ -624,6 +740,9 @@ export default function App() {
         <div style={{ marginBottom: 8 }}>
           <b>Status:</b> {connected ? "Connected" : "Disconnected"}
           <span style={{ marginLeft: 16 }}>
+            <b>Room:</b> {joinedRoomCode || roomCode || "-"}
+          </span>
+          <span style={{ marginLeft: 16 }}>
             <b>Phase:</b> {phase || "-"}
           </span>
           <span style={{ marginLeft: 16 }}>
@@ -639,7 +758,8 @@ export default function App() {
             Room:
             <input
               value={roomCode}
-              onChange={(e) => setRoomCode(e.target.value)}
+              onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+              disabled={!!joinedRoomCode}
               style={{ marginLeft: 6, width: 100 }}
             />
           </label>
@@ -706,14 +826,33 @@ export default function App() {
         </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-          <button onClick={connect}>Connect</button>
-          <button onClick={disconnect}>Disconnect</button>
-          <button onClick={joinRoom}>Join Room</button>
-          <button onClick={leaveRoom}>Leave Room</button>
-          <button onClick={startGame}>Start Game</button>
-          <button onClick={resetGame}>Reset Game</button>
-          <button onClick={sendRoll}>Roll</button>
-          <button onClick={getLegalMoves}>Get Legal Moves</button>
+          <button onClick={connect} disabled={connected}>
+            Connect
+          </button>
+          <button onClick={disconnect} disabled={!connected}>
+            Disconnect
+          </button>
+          <button onClick={createFreshRoom} disabled={!connected || !!joinedRoomCode}>
+            Create Fresh Room
+          </button>
+          <button onClick={joinRoom} disabled={!canJoinRoom || !roomCode.trim()}>
+            Join Room
+          </button>
+          <button onClick={leaveRoom} disabled={!canLeaveRoom}>
+            Leave Room
+          </button>
+          <button onClick={startGame} disabled={!canStartGame}>
+            Start Game
+          </button>
+          <button onClick={resetGame} disabled={!canSendGameplayCommand}>
+            Reset Game
+          </button>
+          <button onClick={sendRoll} disabled={!canSendGameplayCommand}>
+            Roll
+          </button>
+          <button onClick={getLegalMoves} disabled={!canSendGameplayCommand}>
+            Get Legal Moves
+          </button>
           <button onClick={clearLog}>Clear Log</button>
         </div>
 

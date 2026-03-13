@@ -8,7 +8,8 @@ type AnyPosition = {
 export type BoardHole =
   | { type: "track"; arm: number; spot: number }
   | { type: "home"; arm: number; slot: number }
-  | { type: "base"; arm: number; slot: number };
+  | { type: "base"; arm: number; slot: number }
+  | { type: "center" };
 
 function asObject(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object"
@@ -33,6 +34,12 @@ export function mapPositionToBoardHole(
       type: "base",
       arm: playerSeat,
       slot: 0,
+    };
+  }
+
+  if (p.zone === "center") {
+    return {
+      type: "center",
     };
   }
 

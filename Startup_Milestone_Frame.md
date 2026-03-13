@@ -42,7 +42,7 @@ Expand milestones only when explicitly requested
 ✓ M3 — Pregame Options  
 ✓ M4 — Team Model Expansion  
 ✓ M5 — Game Setup UI  
-○ M6 — Graphical Board UI  
+✓ M6 — Graphical Board UI  
 → M7 — Gameplay Interaction Layer  
 → M8 — Game Completion & Results  
 → M9 — Production Readiness
@@ -62,7 +62,7 @@ Current atomic milestone state:
 ✓ M6.3 — Roll / legalMoves / move interaction loop  
 ✓ M6.4 — Dice contract compatibility (double-dice + bank lifecycle)  
 ✓ M6.5 — Functional gameplay loop validation  
-○ M6.6 — Debug UI console refinement
+✓ M6.6 — Debug UI console refinement
 
 Remaining M6.6 scope:
 
@@ -437,3 +437,100 @@ Result:
 game state  
 • UI architecture prepared for live WebSocket message integration  
 • M6 graphical board UI work can proceed on top of the verified pipeline
+
+------------------------------------------------------------------------
+
+### POST-COMPLETE VALIDATION — 2026-03-13  
+(Debug UI Lifecycle Stabilization)
+
+Objective:
+
+Complete the remaining M6.6 work by refining the debug UI room lifecycle
+behavior and eliminating stale-room reconnection issues.
+
+Improvements implemented:
+
+• Introduced explicit "Create Fresh Room" workflow in the debug client  
+• Separated editable room code from joined room state  
+• Reset session UI state before joining or leaving rooms  
+• Cleared room state on WebSocket disconnect  
+• Disabled lifecycle controls when invalid (connect/join/leave guards)  
+• Disabled "Leave Room" during active gameplay to prevent server
+  rejection of leaveRoom requests
+
+Validation performed:
+
+connect  
+createFreshRoom  
+joinRoom  
+startGame  
+leaveRoom (disabled during active phase)  
+createFreshRoom  
+joinRoom
+
+Results:
+
+• No stale-room reconnection observed  
+• Fresh-room startup consistently produces clean lobby state  
+• UI lifecycle controls now match server lifecycle constraints  
+• Debug client workflow confirmed stable for repeated test sessions
+
+Result:
+
+• M6.6 Debug UI console refinement completed  
+• M6 Graphical Board UI milestone closed successfully
+
+
+------------------------------------------------------------------------
+
+### POST-COMPLETE VALIDATION — 2026-03-13  
+(Board-Length Normalization & Center Exit Verification)
+
+Objective:
+
+Verify correct gameplay behavior on boards larger than the original
+56‑track assumption by validating board-length–aware normalization and
+center exit generation.
+
+Engine corrections validated:
+
+• Removed fixed TRACK_LENGTH assumptions in engine logic  
+• Implemented board-size–aware track normalization based on the
+  14‑spot arm module  
+• Confirmed correct track traversal for 4-player, 6-player, and
+  8-player boards
+
+Center mechanics validation:
+
+• Verified center entry behavior using a roll of 1  
+• Verified center exit generation on the 8-player board produces
+  eight distinct exits:
+
+  13  
+  27  
+  41  
+  55  
+  69  
+  83  
+  97  
+  111
+
+Rules enforcement verified:
+
+• Center exits correctly blocked when the destination point is
+  occupied by the player's own peg  
+• Pegs located in the highest home spot generate no legal moves  
+• Legal move generation reflects correct board size
+
+Rendering verification:
+
+• Center hole rendering corrected to match standard track holes  
+• Peg in center position confirmed visible in BoardRenderer  
+• Verified correct board rendering for 4P, 6P, and 8P boards using
+  the live debug UI client
+
+Result:
+
+• Board-length normalization verified across all supported board sizes  
+• Center exit logic confirmed correct for the 8-player board  
+• Rendering and rules engine now aligned for center mechanics

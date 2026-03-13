@@ -75,32 +75,78 @@ move
 moveResult
 
 • Added bounded debug-console controls to App.tsx for:
+
   - Connect / Disconnect
   - Join Room / Leave Room
   - Start Game
   - Reset Game
   - Roll
   - Get Legal Moves
+
 • Added state-driven display for:
+
   - Current Actor
   - Awaiting Dice
   - Pending Dice
   - Banked Dice
+
 • Added legal-move buttons for direct move execution
+
 • Added pending-die selection buttons so individual pending dice can be
   inspected intentionally
+
 • Added multi-die input support for roll/getLegalMoves/move payloads
+
 • Refactored App.tsx into message-router style handlers for server
   messages
+
 • Resolved compile issues in mapPositionToBoardHole.ts and stabilized
   the current debug UI build
 
+• Corrected center-hole rendering so the center hole visually matches
+  normal track holes
+
+• Fixed peg rendering logic so a peg located in the center position
+  appears correctly in the board renderer
+
+• Verified correct graphical rendering for:
+
+  - 4-player board
+  - 6-player board
+  - 8-player board
+
+• Corrected board-size handling in the engine by replacing fixed
+  TRACK_LENGTH assumptions with board-size–aware normalization using the
+  14-spot arm module
+
+• Implemented board-length–aware track normalization for 4, 6, and
+  8-player boards
+
+• Corrected center exit generation so a peg in the center can exit to
+  every valid Point on the board
+
+• Verified correct center-exit behavior on an 8-player board:
+
+  13
+  27
+  41
+  55
+  69
+  83
+  97
+  111
+
+• Verified that center exits are correctly removed when those points are
+  occupied by the player's own pegs
+
+• Verified that pegs occupying their highest Home spot produce no legal
+  moves
+
 Result:
 
-The graphical UI now functions as a bounded debug client capable of
-joining a room, starting a game, rolling, requesting legal moves,
-submitting moves, and rendering live peg movement from the authoritative
-server.
+The graphical debug UI now renders the board correctly for all supported
+player counts and the engine now correctly generates center exits using
+board-size–aware track normalization.
 
 ------------------------------------------------------------------------
 
@@ -127,32 +173,42 @@ Current graphical debug UI capabilities:
 • View Current Actor / Pending Dice / Banked Dice
 • Inspect pending dice individually
 
-Current known limitation:
+Rules / engine validation completed:
 
-The debug UI still makes it too easy to reconnect into a previously used
-active room, which can make the client appear to resume mid-game instead
-of starting from a clean test state.
+• Board-size–aware track normalization
+• Center entry behavior
+• Center exit generation for 8-player boards
+• Own-peg blocking on center exits
+• Finished peg immobility in home area
+
+Milestone state:
+
+• M6 — Graphical Board UI complete
+• M7 — Gameplay Interaction Layer not yet started
 
 ------------------------------------------------------------------------
 
 ## Next Action
 
-Refine debug UI room/session lifecycle behavior.
+Begin M7 — Gameplay Interaction Layer.
 
 Objective:
 
-Prevent accidental reconnection into stale active room state and make
-fresh-room startup behavior explicit and reliable.
+Transition from bounded debug-console interaction toward a more natural
+gameplay interaction model built on top of the validated graphical board
+UI and authoritative server engine.
 
 Immediate next task:
 
-Update the graphical debug client so room handling is cleaner and less
-error-prone, then re-verify the fresh-room startup flow using a newly
-created lobby room.
+Define and implement the first M7 interaction slice by replacing or
+reducing debug-only controls in favor of gameplay-oriented interaction
+flow, then verify the resulting turn interaction remains consistent with
+the authoritative engine contract.
 
 Initial focus:
 
-• Prevent accidental reuse of stale room state
-• Clarify room lifecycle controls in the debug client
-• Re-verify clean new-room start flow
-• Preserve current working gameplay loop while refining the UX
+• Decide the first M7 interaction slice to implement
+• Reduce dependence on debug-only control flow where practical
+• Preserve the validated roll → legalMoves → move → moveResult loop
+• Keep the graphical board and rules engine behavior aligned during the
+  transition
