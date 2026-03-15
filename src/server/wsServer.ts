@@ -11,6 +11,7 @@ import type {
 } from "./protocol";
 import { handleClientMessage, type SessionState } from "./handleMessage";
 import { serializeState, hashState } from "../engine";
+import { makeState } from "../engine/makeState";
 import fs from "node:fs";
 import path from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -954,13 +955,29 @@ if (msg.type === "setReady") {
 
         room.phase = "active";
 
-        (room.session.game as any).config = {
-          playerCount: pc,
-          options: options ?? {},
+        const startingActorId = room.startingActorId ?? "p0";
+        const freshGame = makeState({
+          playerCount: pc as 2 | 3 | 4 | 5 | 6 | 7 | 8,
+          doubleDice: !!(options?.doubleDice ?? prevGc.doubleDice),
+          teamPlay: !!(options?.teamPlay ?? prevGc.teamPlay),
+        });
+
+        freshGame.turn = {
+          ...freshGame.turn,
+          currentPlayerId: startingActorId as any,
         };
 
+        freshGame.config = {
+          playerCount: pc,
+          options: {
+            ...(freshGame.config.options ?? {}),
+            ...(options ?? {}),
+          },
+        } as any;
+
+        room.session.game = freshGame;
         room.session.turn = {
-          nextActorId: room.startingActorId ?? "p0",
+          nextActorId: startingActorId,
           awaitingDice: true,
           dicePolicy: "external",
         } as any;

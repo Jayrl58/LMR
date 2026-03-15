@@ -31,11 +31,19 @@ export type PegPlacement = {
   pegId: string;
   hole: BoardHolePlacement;
   color?: string;
+  isFinished?: boolean;
+};
+
+export type DestinationHighlight = {
+  hole: BoardHolePlacement;
+  color?: string;
 };
 
 const VIEW_SIZE = 1000;
 const CENTER = VIEW_SIZE / 2;
 const DEFAULT_PEG_COLOR = "#2b6cb0";
+const DEFAULT_DESTINATION_COLOR = "#7aa7ff";
+const FINISHED_GOLD_COLOR = "#d4af37";
 
 function degToRad(deg: number) {
   return (deg * Math.PI) / 180;
@@ -142,17 +150,63 @@ function getSpotIdForHole(hole: BoardHolePlacement): string | null {
   return null;
 }
 
+function getScreenPositionForHole(
+  hole: BoardHolePlacement,
+  spots: Spot[]
+): Point | null {
+  if (hole.type === "center") {
+    return { x: CENTER, y: CENTER };
+  }
+
+  const spotId = getSpotIdForHole(hole);
+  if (!spotId) return null;
+
+  const spot = spots.find(
+    (candidate) => candidate.armIndex === hole.arm && candidate.id === spotId
+  );
+
+  if (!spot) return null;
+
+  return {
+    x: spot.screenX,
+    y: spot.screenY,
+  };
+}
+
 export default function BoardRenderer({
   arms = 4,
   pegPlacements = [],
+  movablePegIds = [],
+  destinationHighlights = [],
+  focusedPegId = "",
+  previewPegPlacement = null,
+  onPegClick,
+  onDestinationClick,
+  onDestinationHover,
+  onDestinationLeave,
+  onBackgroundClick,
 }: {
   arms?: BoardArms;
   pegPlacements?: PegPlacement[];
+  movablePegIds?: string[];
+  destinationHighlights?: DestinationHighlight[];
+  focusedPegId?: string;
+  previewPegPlacement?: PegPlacement | null;
+  onPegClick?: (pegId: string) => void;
+  onDestinationClick?: (hole: BoardHolePlacement) => void;
+  onDestinationHover?: (hole: BoardHolePlacement) => void;
+  onDestinationLeave?: () => void;
+  onBackgroundClick?: () => void;
 }) {
   const safeArms: BoardArms =
     arms === 4 || arms === 6 || arms === 8 ? arms : 4;
 
   const geometry = BOARD_GEOMETRY[safeArms];
+
+  const movablePegIdSet = useMemo(
+    () => new Set(movablePegIds),
+    [movablePegIds]
+  );
 
   const spots = useMemo(() => {
     return Array.from({ length: safeArms }, (_, armIndex) =>
@@ -174,23 +228,20 @@ export default function BoardRenderer({
             ...peg,
             screenX: CENTER,
             screenY: CENTER,
+            isMovable: movablePegIdSet.has(peg.pegId),
+            isFocused: peg.pegId === focusedPegId,
           };
         }
 
-        const spotId = getSpotIdForHole(peg.hole);
-        if (!spotId) return null;
-
-        const spot = spots.find(
-          (candidate) =>
-            candidate.armIndex === peg.hole.arm && candidate.id === spotId
-        );
-
-        if (!spot) return null;
+        const position = getScreenPositionForHole(peg.hole, spots);
+        if (!position) return null;
 
         return {
           ...peg,
-          screenX: spot.screenX,
-          screenY: spot.screenY,
+          screenX: position.x,
+          screenY: position.y,
+          isMovable: movablePegIdSet.has(peg.pegId),
+          isFocused: peg.pegId === focusedPegId,
         };
       })
       .filter(
@@ -199,14 +250,71 @@ export default function BoardRenderer({
         ): peg is PegPlacement & {
           screenX: number;
           screenY: number;
+          isMovable: boolean;
+          isFocused: boolean;
         } => peg !== null
       );
-  }, [pegPlacements, spots]);
+  }, [pegPlacements, spots, movablePegIdSet, focusedPegId]);
+
+  const renderedDestinationHighlights = useMemo(() => {
+    return destinationHighlights
+      .map((highlight, index) => {
+        const position = getScreenPositionForHole(highlight.hole, spots);
+        if (!position) return null;
+
+        const isHomeDestination = highlight.hole.type === "home";
+        const baseColor = highlight.color ?? DEFAULT_DESTINATION_COLOR;
+
+        return {
+          key: `${index}-${JSON.stringify(highlight.hole)}`,
+          hole: highlight.hole,
+          screenX: position.x,
+          screenY: position.y,
+          color: baseColor,
+          isHomeDestination,
+        };
+      })
+      .filter(
+        (
+          highlight
+        ): highlight is {
+          key: string;
+          hole: BoardHolePlacement;
+          screenX: number;
+          screenY: number;
+          color: string;
+          isHomeDestination: boolean;
+        } => highlight !== null
+      );
+  }, [destinationHighlights, spots]);
+
+  const renderedPreviewPeg = useMemo(() => {
+    if (!previewPegPlacement) return null;
+
+    const position = getScreenPositionForHole(previewPegPlacement.hole, spots);
+    if (!position) return null;
+
+    return {
+      ...previewPegPlacement,
+      screenX: position.x,
+      screenY: position.y,
+    };
+  }, [previewPegPlacement, spots]);
 
   const pegRadius = Math.max(
     geometry.holeRadius - 2.5,
     geometry.holeRadius * 0.68
   );
+
+  const movableRingRadius = pegRadius + 5;
+  const focusedRingRadius = pegRadius + 9;
+  const finishedGoldRingRadius = pegRadius + 3;
+  const finishedOuterRingRadius = pegRadius + 8;
+  const destinationRingRadius = geometry.holeRadius + 5;
+  const homeDestinationInnerRingRadius = geometry.holeRadius + 4;
+  const homeDestinationOuterRingRadius = geometry.holeRadius + 8;
+  const destinationClickRadius = geometry.holeRadius + 10;
+  const previewPegRadius = pegRadius - 1;
 
   return (
     <svg
@@ -217,7 +325,17 @@ export default function BoardRenderer({
         border: "1px solid #ccc",
         background: "#fafafa",
       }}
+      onClick={onBackgroundClick}
     >
+      <rect
+        x="0"
+        y="0"
+        width={VIEW_SIZE}
+        height={VIEW_SIZE}
+        fill="transparent"
+        pointerEvents="all"
+      />
+
       <circle
         cx={CENTER}
         cy={CENTER}
@@ -239,6 +357,140 @@ export default function BoardRenderer({
         />
       ))}
 
+      {renderedDestinationHighlights.map((highlight) => (
+        <g key={highlight.key}>
+          <circle
+            cx={highlight.screenX}
+            cy={highlight.screenY}
+            r={destinationClickRadius}
+            fill="transparent"
+            stroke="none"
+            style={{
+              cursor:
+                onDestinationClick || onDestinationHover ? "pointer" : "default",
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDestinationClick?.(highlight.hole);
+            }}
+            onMouseEnter={() => onDestinationHover?.(highlight.hole)}
+            onMouseLeave={() => onDestinationLeave?.()}
+          />
+          <circle
+            cx={highlight.screenX}
+            cy={highlight.screenY}
+            r={geometry.holeRadius}
+            fill="transparent"
+            stroke="none"
+            style={{
+              cursor:
+                onDestinationClick || onDestinationHover ? "pointer" : "default",
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDestinationClick?.(highlight.hole);
+            }}
+            onMouseEnter={() => onDestinationHover?.(highlight.hole)}
+            onMouseLeave={() => onDestinationLeave?.()}
+          />
+          {highlight.isHomeDestination ? (
+            <>
+              <circle
+                cx={highlight.screenX}
+                cy={highlight.screenY}
+                r={homeDestinationOuterRingRadius}
+                fill="none"
+                stroke={highlight.color}
+                strokeWidth="3.6"
+                opacity="0.98"
+                style={{ pointerEvents: "none" }}
+              />
+              <circle
+                cx={highlight.screenX}
+                cy={highlight.screenY}
+                r={homeDestinationInnerRingRadius}
+                fill="none"
+                stroke={highlight.color}
+                strokeWidth="2.2"
+                opacity="0.72"
+                style={{ pointerEvents: "none" }}
+              />
+            </>
+          ) : (
+            <circle
+              cx={highlight.screenX}
+              cy={highlight.screenY}
+              r={destinationRingRadius}
+              fill="none"
+              stroke={highlight.color}
+              strokeWidth="3"
+              opacity="0.95"
+              style={{ pointerEvents: "none" }}
+            />
+          )}
+        </g>
+      ))}
+
+      {placedPegs.map((peg) =>
+        peg.isFinished ? (
+          <circle
+            key={`${peg.pegId}-finished-outer-ring`}
+            cx={peg.screenX}
+            cy={peg.screenY}
+            r={finishedOuterRingRadius}
+            fill="none"
+            stroke={peg.color ?? DEFAULT_PEG_COLOR}
+            strokeWidth="3.2"
+            opacity="0.95"
+          />
+        ) : null
+      )}
+
+      {placedPegs.map((peg) =>
+        peg.isFinished ? (
+          <circle
+            key={`${peg.pegId}-finished-gold-ring`}
+            cx={peg.screenX}
+            cy={peg.screenY}
+            r={finishedGoldRingRadius}
+            fill="none"
+            stroke={FINISHED_GOLD_COLOR}
+            strokeWidth="3.2"
+            opacity="1"
+          />
+        ) : null
+      )}
+
+      {placedPegs.map((peg) =>
+        peg.isFocused ? (
+          <circle
+            key={`${peg.pegId}-focus-ring`}
+            cx={peg.screenX}
+            cy={peg.screenY}
+            r={focusedRingRadius}
+            fill="none"
+            stroke={peg.color ?? DEFAULT_PEG_COLOR}
+            strokeWidth="4"
+            opacity="1"
+          />
+        ) : null
+      )}
+
+      {placedPegs.map((peg) =>
+        peg.isMovable ? (
+          <circle
+            key={`${peg.pegId}-ring`}
+            cx={peg.screenX}
+            cy={peg.screenY}
+            r={movableRingRadius}
+            fill="none"
+            stroke={peg.color ?? DEFAULT_PEG_COLOR}
+            strokeWidth={peg.isFocused ? "0" : "3"}
+            opacity={peg.isFocused ? "0" : "0.9"}
+          />
+        ) : null
+      )}
+
       {placedPegs.map((peg) => (
         <circle
           key={peg.pegId}
@@ -246,10 +498,58 @@ export default function BoardRenderer({
           cy={peg.screenY}
           r={pegRadius}
           fill={peg.color ?? DEFAULT_PEG_COLOR}
-          stroke="#222"
-          strokeWidth="1.4"
+          stroke={
+            peg.isFinished
+              ? FINISHED_GOLD_COLOR
+              : peg.isMovable
+                ? (peg.color ?? DEFAULT_PEG_COLOR)
+                : "#222"
+          }
+          strokeWidth={
+            peg.isFinished
+              ? "1.8"
+              : peg.isFocused
+                ? "3.2"
+                : peg.isMovable
+                  ? "2.6"
+                  : "1.4"
+          }
+          style={{
+            cursor: peg.isMovable ? "pointer" : "default",
+          }}
+          onClick={(e) => {
+            if (!peg.isMovable || !onPegClick) return;
+            e.stopPropagation();
+            onPegClick(peg.pegId);
+          }}
         />
       ))}
+
+      {renderedPreviewPeg ? (
+        <>
+          <circle
+            cx={renderedPreviewPeg.screenX}
+            cy={renderedPreviewPeg.screenY}
+            r={previewPegRadius + 4}
+            fill="none"
+            stroke={renderedPreviewPeg.color ?? DEFAULT_PEG_COLOR}
+            strokeWidth="2"
+            opacity="0.55"
+            strokeDasharray="4 3"
+            pointerEvents="none"
+          />
+          <circle
+            cx={renderedPreviewPeg.screenX}
+            cy={renderedPreviewPeg.screenY}
+            r={previewPegRadius}
+            fill={renderedPreviewPeg.color ?? DEFAULT_PEG_COLOR}
+            opacity="0.38"
+            stroke={renderedPreviewPeg.color ?? DEFAULT_PEG_COLOR}
+            strokeWidth="1.4"
+            pointerEvents="none"
+          />
+        </>
+      ) : null}
     </svg>
   );
 }

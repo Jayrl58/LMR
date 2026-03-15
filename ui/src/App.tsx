@@ -1,5 +1,9 @@
-import { useRef, useState, type Dispatch, type SetStateAction } from "react";
-import BoardRenderer, { type PegPlacement } from "./components/BoardRenderer";
+import { useEffect, useRef, useState } from "react";
+import BoardRenderer, {
+  type BoardHolePlacement,
+  type DestinationHighlight,
+  type PegPlacement,
+} from "./components/BoardRenderer";
 import { mapGameStateToUI } from "../../src/ui/mapGameStateToUI";
 import { mapPositionToBoardHole } from "../../src/ui/mapPositionToBoardHole";
 import type { GameState } from "../../src/types";
@@ -22,25 +26,13 @@ type PendingDieView = {
   controllerId: string | null;
 };
 
-type AppStateSetters = {
-  setBoardView: Dispatch<SetStateAction<BoardViewState>>;
-  setConnected: Dispatch<SetStateAction<boolean>>;
-  setClientId: Dispatch<SetStateAction<string>>;
-  setPlayerId: Dispatch<SetStateAction<string>>;
-  setPhase: Dispatch<SetStateAction<string>>;
-  setCurrentActor: Dispatch<SetStateAction<string>>;
-  setAwaitingDice: Dispatch<SetStateAction<string>>;
-  setPendingDice: Dispatch<SetStateAction<PendingDieView[]>>;
-  setBankedDice: Dispatch<SetStateAction<number>>;
-  setRollDiceInput: Dispatch<SetStateAction<string>>;
-  setPlayerCountInput: Dispatch<SetStateAction<string>>;
-  setDoubleDice: Dispatch<SetStateAction<boolean>>;
-  setKillRoll: Dispatch<SetStateAction<boolean>>;
-  setLegalMoveOptions: Dispatch<SetStateAction<LegalMoveOption[]>>;
-  setSelectedPendingDie: Dispatch<SetStateAction<string>>;
-  setLog: Dispatch<SetStateAction<string[]>>;
-  setRoomCode: Dispatch<SetStateAction<string>>;
-  setJoinedRoomCode: Dispatch<SetStateAction<string>>;
+type TurnUiState = {
+  actorId: string;
+  awaitingDice: boolean | null;
+  pendingDice: PendingDieView[];
+  bankedDice: number;
+  selectedDie: string;
+  legalMoves: LegalMoveOption[];
 };
 
 const WS_URL = "ws://127.0.0.1:8787";
@@ -48,6 +40,15 @@ const WS_URL = "ws://127.0.0.1:8787";
 const EMPTY_BOARD_VIEW: BoardViewState = {
   arms: 4,
   pegPlacements: [],
+};
+
+const EMPTY_TURN_UI: TurnUiState = {
+  actorId: "",
+  awaitingDice: null,
+  pendingDice: [],
+  bankedDice: 0,
+  selectedDie: "",
+  legalMoves: [],
 };
 
 const PEG_COLORS: Record<string, string> = {
@@ -110,6 +111,7 @@ function buildBoardViewFromGameState(gameState: GameState): BoardViewState {
       arms
     ),
     color: PEG_COLORS[String(peg.playerId)] ?? "gray",
+    isFinished: !!peg.isFinished,
   }));
 
   return {
@@ -199,217 +201,236 @@ function extractPendingDice(turn: unknown): PendingDieView[] {
     .filter((pd) => pd.value >= 1 && pd.value <= 6);
 }
 
-function resetSessionUi(setters: AppStateSetters): void {
-  setters.setBoardView(EMPTY_BOARD_VIEW);
-  setters.setPlayerId("");
-  setters.setPhase("");
-  setters.setCurrentActor("");
-  setters.setAwaitingDice("");
-  setters.setPendingDice([]);
-  setters.setBankedDice(0);
-  setters.setRollDiceInput("1");
-  setters.setLegalMoveOptions([]);
-  setters.setSelectedPendingDie("");
-}
+function extractMovablePegIds(legalMoveOptions: LegalMoveOption[]): string[] {
+  const movablePegIds = new Set<string>();
 
-function resetConnectionUi(setters: AppStateSetters): void {
-  resetSessionUi(setters);
-  setters.setConnected(false);
-  setters.setClientId("");
-  setters.setJoinedRoomCode("");
-  setters.setRoomCode("");
-  setters.setLog([]);
-}
+  legalMoveOptions.forEach((option) => {
+    try {
+      const move = JSON.parse(option.value) as unknown;
+      if (!isObject(move)) return;
 
-function updateBoardFromStatePayload(payload: unknown, setters: AppStateSetters) {
-  if (!isGameState(payload)) return;
+      const actorPlayerId =
+        typeof move.actorPlayerId === "string" ? move.actorPlayerId : null;
+      const pegIndex =
+        typeof move.pegIndex === "number" ? move.pegIndex : null;
 
-  setters.setBoardView(buildBoardViewFromGameState(payload));
-  setters.setPhase(payload.phase);
+      if (!actorPlayerId || pegIndex === null) return;
 
-  const currentPlayerId =
-    typeof payload.turn?.currentPlayerId === "string"
-      ? payload.turn.currentPlayerId
-      : "";
-  setters.setCurrentActor(currentPlayerId);
-}
-
-function updateTurnUi(turn: unknown, setters: AppStateSetters) {
-  if (!isObject(turn)) return;
-
-  const nextActorId =
-    typeof turn.nextActorId === "string" ? turn.nextActorId : "";
-  const awaiting =
-    typeof turn.awaitingDice === "boolean" ? String(turn.awaitingDice) : "";
-
-  setters.setCurrentActor((prev) => nextActorId || prev);
-  setters.setAwaitingDice(awaiting);
-
-  const nextPendingDice = extractPendingDice(turn);
-  setters.setPendingDice(nextPendingDice);
-
-  const nextBankedDice =
-    typeof turn.bankedDice === "number" && turn.bankedDice > 0
-      ? turn.bankedDice
-      : 0;
-
-  setters.setBankedDice(nextBankedDice);
-
-  if (nextPendingDice.length > 0) {
-    setters.setRollDiceInput(formatDice(nextPendingDice.map((pd) => pd.value)));
-    setters.setSelectedPendingDie((prev) => {
-      if (prev && nextPendingDice.some((pd) => String(pd.value) === prev)) {
-        return prev;
-      }
-      return nextPendingDice.length === 1 ? String(nextPendingDice[0].value) : "";
-    });
-  } else if (nextBankedDice > 0) {
-    setters.setRollDiceInput(
-      Array.from({ length: nextBankedDice }, () => "1").join(",")
-    );
-    setters.setSelectedPendingDie("");
-  } else {
-    setters.setRollDiceInput("1");
-    setters.setSelectedPendingDie("");
-  }
-}
-
-function handleWelcome(message: Record<string, unknown>, setters: AppStateSetters) {
-  if (typeof message.clientId === "string") {
-    setters.setClientId(message.clientId);
-  }
-}
-
-function handleRoomJoined(
-  message: Record<string, unknown>,
-  setters: AppStateSetters,
-  fallbackRoomCode: string
-) {
-  if (typeof message.playerId === "string") {
-    setters.setPlayerId(message.playerId);
-  }
-
-  const joinedRoomCode =
-    typeof message.roomCode === "string" && message.roomCode.trim()
-      ? message.roomCode.trim().toUpperCase()
-      : fallbackRoomCode;
-
-  setters.setJoinedRoomCode(joinedRoomCode);
-  setters.setRoomCode(joinedRoomCode);
-}
-
-function handleLobbySync(message: Record<string, unknown>, setters: AppStateSetters) {
-  const lobby = isObject(message.lobby) ? message.lobby : undefined;
-  if (lobby && typeof lobby.phase === "string") {
-    setters.setPhase(lobby.phase);
-  }
-}
-
-function handleStateSync(message: Record<string, unknown>, setters: AppStateSetters) {
-  const parsed = parseJsonIfString(message.state);
-
-  if (isGameState(parsed)) {
-    updateBoardFromStatePayload(parsed, setters);
-  }
-
-  updateTurnUi(message.turn, setters);
-  setters.setLegalMoveOptions([]);
-}
-
-function handleLegalMoves(message: Record<string, unknown>, setters: AppStateSetters) {
-  const messageDice = Array.isArray(message.dice)
-    ? message.dice.filter((d): d is number => typeof d === "number")
-    : typeof message.die === "number"
-      ? [message.die]
-      : [];
-
-  const moves = Array.isArray(message.moves) ? message.moves : [];
-  const options = moves.map((move, index) => ({
-    label: `${index + 1}. ${prettyMoveLabel(move)}`,
-    value: safeStringify(move),
-    dice: buildMoveDice(move, messageDice),
-  }));
-
-  setters.setLegalMoveOptions(options);
-
-  if (typeof message.actorId === "string") {
-    setters.setCurrentActor(message.actorId);
-  }
-
-  updateTurnUi(message.turn, setters);
-}
-
-function handleMoveResult(message: Record<string, unknown>, setters: AppStateSetters) {
-  if (!isObject(message.response)) return;
-
-  const response = message.response;
-
-  if (response.ok === true) {
-    const nextState = isObject(response.result)
-      ? parseJsonIfString(response.result.nextState)
-      : undefined;
-
-    if (isGameState(nextState)) {
-      updateBoardFromStatePayload(nextState, setters);
+      movablePegIds.add(`${actorPlayerId}-${pegIndex}`);
+    } catch {
+      return;
     }
+  });
 
-    updateTurnUi(response.turn, setters);
-    setters.setLegalMoveOptions([]);
+  return Array.from(movablePegIds);
+}
+
+function holesMatch(a: BoardHolePlacement, b: BoardHolePlacement): boolean {
+  if (a.type !== b.type) return false;
+
+  if (a.type === "center" && b.type === "center") return true;
+
+  if (a.type === "track" && b.type === "track") {
+    return a.arm === b.arm && a.spot === b.spot;
+  }
+
+  if (a.type === "home" && b.type === "home") {
+    return a.arm === b.arm && a.slot === b.slot;
+  }
+
+  if (a.type === "base" && b.type === "base") {
+    return a.arm === b.arm && a.slot === b.slot;
+  }
+
+  return false;
+}
+
+function mapMoveToHole(
+  move: Record<string, unknown>,
+  boardArms: SupportedArms
+): BoardHolePlacement | null {
+  if (!isObject(move.to)) return null;
+
+  const to = move.to as Record<string, unknown>;
+  const actorPlayerId =
+    typeof move.actorPlayerId === "string" ? move.actorPlayerId : null;
+
+  if (to.zone === "center") {
+    return { type: "center" };
+  }
+
+  if (
+    to.zone === "track" &&
+    typeof to.index === "number" &&
+    Number.isInteger(to.index) &&
+    actorPlayerId
+  ) {
+    const mapped = mapPositionToBoardHole(
+      { zone: "track", index: to.index },
+      Number(actorPlayerId.slice(1)),
+      boardArms
+    );
+    return mapped.type === "track" || mapped.type === "home" || mapped.type === "center"
+      ? mapped
+      : null;
+  }
+
+  if (to.zone === "home") {
+    const playerId =
+      typeof to.playerId === "string"
+        ? to.playerId
+        : actorPlayerId;
+
+    const slot =
+      typeof to.slot === "number" && Number.isInteger(to.slot)
+        ? to.slot
+        : typeof to.index === "number" && Number.isInteger(to.index)
+          ? to.index
+          : null;
+
+    if (playerId && slot !== null) {
+      const mapped = mapPositionToBoardHole(
+        { zone: "home", playerId, slot },
+        Number(playerId.slice(1)),
+        boardArms
+      );
+      return mapped.type === "home" || mapped.type === "track" || mapped.type === "center"
+        ? mapped
+        : null;
+    }
+  }
+
+  return null;
+}
+
+function extractDestinationHighlights(
+  legalMoveOptions: LegalMoveOption[],
+  boardArms: SupportedArms,
+  focusedPegId: string
+): DestinationHighlight[] {
+  const highlights: DestinationHighlight[] = [];
+
+  legalMoveOptions.forEach((option) => {
+    try {
+      const move = JSON.parse(option.value) as unknown;
+      if (!isObject(move)) return;
+
+      const actorPlayerId =
+        typeof move.actorPlayerId === "string" ? move.actorPlayerId : null;
+      const pegIndex =
+        typeof move.pegIndex === "number" ? move.pegIndex : null;
+
+      if (!actorPlayerId || pegIndex === null) return;
+
+      const movePegId = `${actorPlayerId}-${pegIndex}`;
+      if (focusedPegId && movePegId !== focusedPegId) return;
+
+      const hole = mapMoveToHole(move, boardArms);
+      if (!hole) return;
+
+      const alreadyPresent = highlights.some((existing) =>
+        holesMatch(existing.hole, hole)
+      );
+
+      if (!alreadyPresent) {
+        highlights.push({
+          hole,
+          color: PEG_COLORS[actorPlayerId] ?? "gray",
+        });
+      }
+    } catch {
+      return;
+    }
+  });
+
+  return highlights;
+}
+
+function optionMatchesDestinationHole(
+  option: LegalMoveOption,
+  boardArms: SupportedArms,
+  hole: BoardHolePlacement,
+  focusedPegId: string
+): boolean {
+  try {
+    const move = JSON.parse(option.value) as unknown;
+    if (!isObject(move)) return false;
+
+    const actorPlayerId =
+      typeof move.actorPlayerId === "string" ? move.actorPlayerId : null;
+    const pegIndex =
+      typeof move.pegIndex === "number" ? move.pegIndex : null;
+
+    if (!actorPlayerId || pegIndex === null) return false;
+
+    const movePegId = `${actorPlayerId}-${pegIndex}`;
+    if (focusedPegId && movePegId !== focusedPegId) return false;
+
+    const mappedHole = mapMoveToHole(move, boardArms);
+    if (!mappedHole) return false;
+
+    return holesMatch(mappedHole, hole);
+  } catch {
+    return false;
   }
 }
 
-function handleLeaveRoomAck(setters: AppStateSetters) {
-  resetSessionUi(setters);
-  setters.setJoinedRoomCode("");
-}
+function extractPreviewPegPlacement(
+  legalMoveOptions: LegalMoveOption[],
+  boardArms: SupportedArms,
+  hoveredDestinationHole: BoardHolePlacement | null,
+  focusedPegId: string
+): PegPlacement | null {
+  if (!hoveredDestinationHole) return null;
 
-function handleError(_message: Record<string, unknown>, _setters: AppStateSetters) {
-  return;
-}
+  const matchingOption = legalMoveOptions.find((option) =>
+    optionMatchesDestinationHole(option, boardArms, hoveredDestinationHole, focusedPegId)
+  );
 
-function handleServerMessage(
-  message: unknown,
-  setters: AppStateSetters,
-  fallbackRoomCode: string
-) {
-  if (!isObject(message) || typeof message.type !== "string") return;
+  if (!matchingOption) return null;
 
-  switch (message.type) {
-    case "welcome":
-      handleWelcome(message, setters);
-      return;
-    case "roomJoined":
-      handleRoomJoined(message, setters, fallbackRoomCode);
-      return;
-    case "leaveRoomAck":
-      handleLeaveRoomAck(setters);
-      return;
-    case "lobbySync":
-      handleLobbySync(message, setters);
-      return;
-    case "stateSync":
-      handleStateSync(message, setters);
-      return;
-    case "legalMoves":
-      handleLegalMoves(message, setters);
-      return;
-    case "moveResult":
-      handleMoveResult(message, setters);
-      return;
-    case "error":
-      handleError(message, setters);
-      return;
-    default:
-      return;
+  try {
+    const move = JSON.parse(matchingOption.value) as unknown;
+    if (!isObject(move)) return null;
+
+    const actorPlayerId =
+      typeof move.actorPlayerId === "string" ? move.actorPlayerId : null;
+    const pegIndex =
+      typeof move.pegIndex === "number" ? move.pegIndex : null;
+
+    if (!actorPlayerId || pegIndex === null) return null;
+
+    return {
+      pegId: `${actorPlayerId}-${pegIndex}`,
+      hole: hoveredDestinationHole,
+      color: PEG_COLORS[actorPlayerId] ?? "gray",
+      isFinished: false,
+    };
+  } catch {
+    return null;
   }
 }
 
-function generateRoomCode(): string {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  return Array.from({ length: 6 }, () => {
-    const index = Math.floor(Math.random() * alphabet.length);
-    return alphabet[index];
-  }).join("");
+function DieFace({ value }: { value: number | string }) {
+  return (
+    <div
+      style={{
+        width: 38,
+        height: 38,
+        border: "1px solid #999",
+        borderRadius: 6,
+        background: "#fff",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 20,
+        fontWeight: 700,
+        lineHeight: 1,
+      }}
+    >
+      {value}
+    </div>
+  );
 }
 
 export default function App() {
@@ -426,48 +447,45 @@ export default function App() {
   const [clientId, setClientId] = useState("");
   const [playerId, setPlayerId] = useState("");
   const [phase, setPhase] = useState("");
-  const [currentActor, setCurrentActor] = useState("");
-  const [awaitingDice, setAwaitingDice] = useState<string>("");
+  const [turnUi, setTurnUi] = useState<TurnUiState>(EMPTY_TURN_UI);
+  const [focusedPegId, setFocusedPegId] = useState("");
+  const [hoveredDestinationHole, setHoveredDestinationHole] =
+    useState<BoardHolePlacement | null>(null);
 
-  const [pendingDice, setPendingDice] = useState<PendingDieView[]>([]);
-  const [bankedDice, setBankedDice] = useState<number>(0);
-  const [selectedPendingDie, setSelectedPendingDie] = useState("");
-
-  const [legalMoveOptions, setLegalMoveOptions] = useState<LegalMoveOption[]>([]);
   const [log, setLog] = useState<string[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const pendingJoinRoomCodeRef = useRef("");
+  const autoRequestedSingleDieKeyRef = useRef("");
+
+  const currentActor = turnUi.actorId;
+  const awaitingDiceDisplay =
+    turnUi.awaitingDice === null ? "-" : String(turnUi.awaitingDice);
+  const pendingDice = turnUi.pendingDice;
+  const bankedDice = turnUi.bankedDice;
+  const selectedPendingDie = turnUi.selectedDie;
+  const legalMoveOptions = turnUi.legalMoves;
+  const movablePegIds = extractMovablePegIds(legalMoveOptions);
+  const destinationHighlights = extractDestinationHighlights(
+    legalMoveOptions,
+    boardView.arms,
+    focusedPegId
+  );
+  const previewPegPlacement = extractPreviewPegPlacement(
+    legalMoveOptions,
+    boardView.arms,
+    hoveredDestinationHole,
+    focusedPegId
+  );
 
   function appendLog(msg: string) {
     setLog((prev) => [...prev.slice(-100), msg]);
   }
 
-  const setters: AppStateSetters = {
-    setBoardView,
-    setConnected,
-    setClientId,
-    setPlayerId,
-    setPhase,
-    setCurrentActor,
-    setAwaitingDice,
-    setPendingDice,
-    setBankedDice,
-    setRollDiceInput,
-    setPlayerCountInput,
-    setDoubleDice,
-    setKillRoll,
-    setLegalMoveOptions,
-    setSelectedPendingDie,
-    setLog,
-    setRoomCode,
-    setJoinedRoomCode,
-  };
-
-  const canJoinRoom = connected && !joinedRoomCode;
-  const canLeaveRoom = connected && !!joinedRoomCode && phase !== "active";
-  const canStartGame = connected && !!joinedRoomCode;
-  const canSendGameplayCommand = connected && !!joinedRoomCode;
+  function clearBoardFocus() {
+    setFocusedPegId("");
+    setHoveredDestinationHole(null);
+  }
 
   function connect() {
     if (wsRef.current) return;
@@ -483,17 +501,266 @@ export default function App() {
     ws.onmessage = (event) => {
       const message = JSON.parse(event.data);
       appendLog(safeStringify(message));
-      handleServerMessage(message, setters, pendingJoinRoomCodeRef.current);
-    };
 
-    ws.onerror = (event) => {
-      appendLog(`WS error: ${safeStringify(event)}`);
+      if (message.type === "welcome" && typeof message.clientId === "string") {
+        setClientId(message.clientId);
+        return;
+      }
+
+      if (message.type === "roomJoined") {
+        if (typeof message.playerId === "string") {
+          setPlayerId(message.playerId);
+        }
+        if (typeof message.roomCode === "string") {
+          setJoinedRoomCode(message.roomCode);
+          setRoomCode(message.roomCode);
+        }
+        return;
+      }
+
+      if (message.type === "leaveRoomAck") {
+        setPlayerId("");
+        setPhase("");
+        setTurnUi(EMPTY_TURN_UI);
+        setBoardView(EMPTY_BOARD_VIEW);
+        setJoinedRoomCode("");
+        clearBoardFocus();
+        return;
+      }
+
+      if (message.type === "lobbySync") {
+        if (message.lobby && typeof message.lobby.phase === "string") {
+          setPhase(message.lobby.phase);
+        }
+        return;
+      }
+
+      if (message.type === "stateSync") {
+        const parsed = parseJsonIfString(message.state);
+        if (isGameState(parsed)) {
+          setBoardView(buildBoardViewFromGameState(parsed));
+          setPhase(parsed.phase);
+          const currentPlayerId =
+            typeof parsed.turn?.currentPlayerId === "string"
+              ? parsed.turn.currentPlayerId
+              : "";
+          setTurnUi((prev) => ({
+            ...prev,
+            actorId: currentPlayerId,
+          }));
+        }
+
+        const turn = message.turn;
+        if (isObject(turn)) {
+          const nextActorId =
+            typeof turn.nextActorId === "string" ? turn.nextActorId : "";
+          const nextAwaitingDice =
+            typeof turn.awaitingDice === "boolean" ? turn.awaitingDice : null;
+          const nextPendingDice = extractPendingDice(turn);
+          const nextBankedDice =
+            typeof turn.bankedDice === "number" && turn.bankedDice > 0
+              ? turn.bankedDice
+              : 0;
+
+          if (nextPendingDice.length > 0) {
+            setRollDiceInput(formatDice(nextPendingDice.map((pd) => pd.value)));
+          } else if (nextBankedDice > 0) {
+            setRollDiceInput(
+              Array.from({ length: nextBankedDice }, () => "1").join(",")
+            );
+          } else {
+            setRollDiceInput("1");
+          }
+
+          setTurnUi((prev) => {
+            let nextSelectedDie = "";
+            if (nextPendingDice.length > 0) {
+              if (
+                prev.selectedDie &&
+                nextPendingDice.some((pd) => String(pd.value) === prev.selectedDie)
+              ) {
+                nextSelectedDie = prev.selectedDie;
+              } else {
+                nextSelectedDie =
+                  nextPendingDice.length === 1 ? String(nextPendingDice[0].value) : "";
+              }
+            }
+
+            return {
+              ...prev,
+              actorId: nextActorId || prev.actorId,
+              awaitingDice: nextAwaitingDice,
+              pendingDice: nextPendingDice,
+              bankedDice: nextBankedDice,
+              selectedDie: nextSelectedDie,
+              legalMoves: [],
+            };
+          });
+        }
+        return;
+      }
+
+      if (message.type === "legalMoves") {
+        const messageDice = Array.isArray(message.dice)
+          ? message.dice.filter((d: unknown): d is number => typeof d === "number")
+          : typeof message.die === "number"
+            ? [message.die]
+            : [];
+
+        const moves = Array.isArray(message.moves) ? message.moves : [];
+        const options = moves.map((move, index) => ({
+          label: `${index + 1}. ${prettyMoveLabel(move)}`,
+          value: safeStringify(move),
+          dice: buildMoveDice(move, messageDice),
+        }));
+
+        const turn = message.turn;
+        if (isObject(turn)) {
+          const nextActorId =
+            typeof turn.nextActorId === "string" ? turn.nextActorId : "";
+          const nextAwaitingDice =
+            typeof turn.awaitingDice === "boolean" ? turn.awaitingDice : null;
+          const nextPendingDice = extractPendingDice(turn);
+          const nextBankedDice =
+            typeof turn.bankedDice === "number" && turn.bankedDice > 0
+              ? turn.bankedDice
+              : 0;
+
+          if (nextPendingDice.length > 0) {
+            setRollDiceInput(formatDice(nextPendingDice.map((pd) => pd.value)));
+          } else if (nextBankedDice > 0) {
+            setRollDiceInput(
+              Array.from({ length: nextBankedDice }, () => "1").join(",")
+            );
+          } else {
+            setRollDiceInput("1");
+          }
+
+          setTurnUi((prev) => {
+            let nextSelectedDie = "";
+            if (nextPendingDice.length > 0) {
+              if (
+                prev.selectedDie &&
+                nextPendingDice.some((pd) => String(pd.value) === prev.selectedDie)
+              ) {
+                nextSelectedDie = prev.selectedDie;
+              } else {
+                nextSelectedDie =
+                  nextPendingDice.length === 1 ? String(nextPendingDice[0].value) : "";
+              }
+            }
+
+            return {
+              ...prev,
+              actorId:
+                typeof message.actorId === "string"
+                  ? message.actorId
+                  : nextActorId || prev.actorId,
+              awaitingDice: nextAwaitingDice,
+              pendingDice: nextPendingDice,
+              bankedDice: nextBankedDice,
+              selectedDie: nextSelectedDie,
+              legalMoves: options,
+            };
+          });
+        } else {
+          setTurnUi((prev) => ({
+            ...prev,
+            actorId: typeof message.actorId === "string" ? message.actorId : prev.actorId,
+            legalMoves: options,
+          }));
+        }
+        return;
+      }
+
+      if (message.type === "moveResult" && isObject(message.response)) {
+        const response = message.response;
+        if (response.ok === true) {
+          const nextState = isObject(response.result)
+            ? parseJsonIfString(response.result.nextState)
+            : undefined;
+
+          if (isGameState(nextState)) {
+            setBoardView(buildBoardViewFromGameState(nextState));
+            setPhase(nextState.phase);
+            const currentPlayerId =
+              typeof nextState.turn?.currentPlayerId === "string"
+                ? nextState.turn.currentPlayerId
+                : "";
+            setTurnUi((prev) => ({
+              ...prev,
+              actorId: currentPlayerId,
+            }));
+          }
+
+          if (isObject(response.turn)) {
+            const turn = response.turn;
+            const nextActorId =
+              typeof turn.nextActorId === "string" ? turn.nextActorId : "";
+            const nextAwaitingDice =
+              typeof turn.awaitingDice === "boolean" ? turn.awaitingDice : null;
+            const nextPendingDice = extractPendingDice(turn);
+            const nextBankedDice =
+              typeof turn.bankedDice === "number" && turn.bankedDice > 0
+                ? turn.bankedDice
+                : 0;
+
+            if (nextPendingDice.length > 0) {
+              setRollDiceInput(formatDice(nextPendingDice.map((pd) => pd.value)));
+            } else if (nextBankedDice > 0) {
+              setRollDiceInput(
+                Array.from({ length: nextBankedDice }, () => "1").join(",")
+              );
+            } else {
+              setRollDiceInput("1");
+            }
+
+            setTurnUi((prev) => {
+              let nextSelectedDie = "";
+              if (nextPendingDice.length > 0) {
+                if (
+                  prev.selectedDie &&
+                  nextPendingDice.some((pd) => String(pd.value) === prev.selectedDie)
+                ) {
+                  nextSelectedDie = prev.selectedDie;
+                } else {
+                  nextSelectedDie =
+                    nextPendingDice.length === 1 ? String(nextPendingDice[0].value) : "";
+                }
+              }
+
+              return {
+                ...prev,
+                actorId: nextActorId || prev.actorId,
+                awaitingDice: nextAwaitingDice,
+                pendingDice: nextPendingDice,
+                bankedDice: nextBankedDice,
+                selectedDie: nextSelectedDie,
+                legalMoves: [],
+              };
+            });
+          } else {
+            setTurnUi((prev) => ({
+              ...prev,
+              legalMoves: [],
+            }));
+          }
+        }
+      }
     };
 
     ws.onclose = () => {
       wsRef.current = null;
-      pendingJoinRoomCodeRef.current = "";
-      resetConnectionUi(setters);
+      setConnected(false);
+      setClientId("");
+      setPlayerId("");
+      setPhase("");
+      setTurnUi(EMPTY_TURN_UI);
+      setBoardView(EMPTY_BOARD_VIEW);
+      setJoinedRoomCode("");
+      setRoomCode("");
+      setLog([]);
+      clearBoardFocus();
     };
   }
 
@@ -504,8 +771,16 @@ export default function App() {
       return;
     }
 
-    pendingJoinRoomCodeRef.current = "";
-    resetConnectionUi(setters);
+    setConnected(false);
+    setClientId("");
+    setPlayerId("");
+    setPhase("");
+    setTurnUi(EMPTY_TURN_UI);
+    setBoardView(EMPTY_BOARD_VIEW);
+    setJoinedRoomCode("");
+    setRoomCode("");
+    setLog([]);
+    clearBoardFocus();
   }
 
   function clearLog() {
@@ -529,10 +804,21 @@ export default function App() {
       return;
     }
 
-    const freshRoomCode = generateRoomCode();
     pendingJoinRoomCodeRef.current = "";
-    resetSessionUi(setters);
+    autoRequestedSingleDieKeyRef.current = "";
+    clearBoardFocus();
+    setPlayerId("");
+    setPhase("");
+    setTurnUi(EMPTY_TURN_UI);
+    setBoardView(EMPTY_BOARD_VIEW);
     setJoinedRoomCode("");
+
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const freshRoomCode = Array.from({ length: 6 }, () => {
+      const index = Math.floor(Math.random() * alphabet.length);
+      return alphabet[index];
+    }).join("");
+
     setRoomCode(freshRoomCode);
     appendLog(`Fresh room prepared: ${freshRoomCode}`);
   }
@@ -545,13 +831,18 @@ export default function App() {
       return;
     }
 
-    if (!canJoinRoom) {
+    if (!(connected && !joinedRoomCode)) {
       appendLog("Already in a room. Leave the current room first.");
       return;
     }
 
     pendingJoinRoomCodeRef.current = trimmedRoomCode;
-    resetSessionUi(setters);
+    autoRequestedSingleDieKeyRef.current = "";
+    clearBoardFocus();
+    setPlayerId("");
+    setPhase("");
+    setTurnUi(EMPTY_TURN_UI);
+    setBoardView(EMPTY_BOARD_VIEW);
     setRoomCode(trimmedRoomCode);
 
     send({
@@ -561,7 +852,7 @@ export default function App() {
   }
 
   function leaveRoom() {
-    if (!canLeaveRoom) {
+    if (!(connected && !!joinedRoomCode && phase !== "active")) {
       appendLog("Not currently joined to a room.");
       return;
     }
@@ -571,13 +862,18 @@ export default function App() {
     });
 
     pendingJoinRoomCodeRef.current = "";
-    resetSessionUi(setters);
+    autoRequestedSingleDieKeyRef.current = "";
+    clearBoardFocus();
+    setPlayerId("");
+    setPhase("");
+    setTurnUi(EMPTY_TURN_UI);
+    setBoardView(EMPTY_BOARD_VIEW);
     setJoinedRoomCode("");
     appendLog("Left room locally; awaiting server sync.");
   }
 
   function startGame() {
-    if (!canStartGame) {
+    if (!(connected && !!joinedRoomCode)) {
       appendLog("Join a room before starting a game.");
       return;
     }
@@ -599,7 +895,7 @@ export default function App() {
   }
 
   function resetGame() {
-    if (!canSendGameplayCommand) {
+    if (!(connected && !!joinedRoomCode)) {
       appendLog("Join a room before resetting a game.");
       return;
     }
@@ -611,7 +907,7 @@ export default function App() {
   }
 
   function requestLegalMovesForDice(dice: number[]) {
-    if (!canSendGameplayCommand) {
+    if (!(connected && !!joinedRoomCode)) {
       appendLog("Join a room before requesting legal moves.");
       return;
     }
@@ -624,13 +920,44 @@ export default function App() {
   }
 
   function choosePendingDie(value: number) {
-    setSelectedPendingDie(String(value));
+    autoRequestedSingleDieKeyRef.current = "";
+    clearBoardFocus();
+    setTurnUi((prev) => ({
+      ...prev,
+      selectedDie: String(value),
+    }));
     setRollDiceInput(String(value));
     requestLegalMovesForDice([value]);
   }
 
+  function handlePegClick(pegId: string) {
+    setHoveredDestinationHole(null);
+    setFocusedPegId((prev) => (prev === pegId ? "" : pegId));
+  }
+
+  function handleDestinationClick(hole: BoardHolePlacement) {
+    const matchingOption = legalMoveOptions.find((option) =>
+      optionMatchesDestinationHole(option, boardView.arms, hole, focusedPegId)
+    );
+
+    if (!matchingOption) {
+      appendLog("No legal move matched the selected destination.");
+      return;
+    }
+
+    sendMove(matchingOption);
+  }
+
+  function handleDestinationHover(hole: BoardHolePlacement) {
+    setHoveredDestinationHole(hole);
+  }
+
+  function handleDestinationLeave() {
+    setHoveredDestinationHole(null);
+  }
+
   function sendRoll() {
-    if (!canSendGameplayCommand) {
+    if (!(connected && !!joinedRoomCode)) {
       appendLog("Join a room before rolling.");
       return;
     }
@@ -641,6 +968,7 @@ export default function App() {
       return;
     }
 
+    clearBoardFocus();
     send({
       type: "roll",
       actorId: currentActor,
@@ -649,7 +977,7 @@ export default function App() {
   }
 
   function getLegalMoves() {
-    if (!canSendGameplayCommand) {
+    if (!(connected && !!joinedRoomCode)) {
       appendLog("Join a room before requesting legal moves.");
       return;
     }
@@ -665,11 +993,12 @@ export default function App() {
       return;
     }
 
+    clearBoardFocus();
     requestLegalMovesForDice(dice);
   }
 
   function sendMove(option: LegalMoveOption) {
-    if (!canSendGameplayCommand) {
+    if (!(connected && !!joinedRoomCode)) {
       appendLog("Join a room before sending a move.");
       return;
     }
@@ -682,6 +1011,7 @@ export default function App() {
       return;
     }
 
+    clearBoardFocus();
     send({
       type: "move",
       actorId: currentActor,
@@ -690,40 +1020,51 @@ export default function App() {
     });
   }
 
-  const moveButtons = legalMoveOptions.map((option) => (
-    <button
-      key={option.value}
-      onClick={() => sendMove(option)}
-      style={{
-        textAlign: "left",
-        padding: "6px 8px",
-        border: "1px solid #bbb",
-        background: "#fff",
-        cursor: "pointer",
-      }}
-    >
-      {option.label}
-    </button>
-  ));
+  useEffect(() => {
+    if (!(connected && !!joinedRoomCode)) {
+      autoRequestedSingleDieKeyRef.current = "";
+      return;
+    }
 
-  const pendingDieButtons = pendingDice.map((pd, index) => {
-    const selected = selectedPendingDie === String(pd.value);
-    return (
-      <button
-        key={`${pd.value}-${pd.controllerId ?? "unassigned"}-${index}`}
-        onClick={() => choosePendingDie(pd.value)}
-        style={{
-          padding: "4px 8px",
-          border: "1px solid #bbb",
-          background: selected ? "#dfefff" : "#fff",
-          cursor: "pointer",
-        }}
-      >
-        {pd.value}
-        {pd.controllerId ? ` (${pd.controllerId})` : " (unassigned)"}
-      </button>
+    if (pendingDice.length !== 1) {
+      autoRequestedSingleDieKeyRef.current = "";
+      return;
+    }
+
+    const die = pendingDice[0];
+    const selectedDieValue = String(die.value);
+    const requestKey = `${currentActor}|${selectedDieValue}|${pendingDice.length}|${bankedDice}`;
+
+    if (autoRequestedSingleDieKeyRef.current === requestKey) {
+      return;
+    }
+
+    autoRequestedSingleDieKeyRef.current = requestKey;
+    clearBoardFocus();
+    setTurnUi((prev) => ({
+      ...prev,
+      selectedDie: selectedDieValue,
+    }));
+    setRollDiceInput(selectedDieValue);
+    requestLegalMovesForDice([die.value]);
+  }, [connected, joinedRoomCode, currentActor, pendingDice, bankedDice]);
+
+  useEffect(() => {
+    if (!focusedPegId) return;
+    if (!movablePegIds.includes(focusedPegId)) {
+      setFocusedPegId("");
+    }
+  }, [focusedPegId, movablePegIds]);
+
+  useEffect(() => {
+    if (!hoveredDestinationHole) return;
+    const stillValid = destinationHighlights.some((highlight) =>
+      holesMatch(highlight.hole, hoveredDestinationHole)
     );
-  });
+    if (!stillValid) {
+      setHoveredDestinationHole(null);
+    }
+  }, [hoveredDestinationHole, destinationHighlights]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
@@ -749,7 +1090,7 @@ export default function App() {
             <b>Current Actor:</b> {currentActor || "-"}
           </span>
           <span style={{ marginLeft: 16 }}>
-            <b>Awaiting Dice:</b> {awaitingDice || "-"}
+            <b>Awaiting Dice:</b> {awaitingDiceDisplay}
           </span>
         </div>
 
@@ -823,6 +1164,85 @@ export default function App() {
           <span style={{ marginLeft: 16 }}>
             <b>Banked Dice:</b> {bankedDice}
           </span>
+          <span style={{ marginLeft: 16 }}>
+            <b>Focused Peg:</b> {focusedPegId || "-"}
+          </span>
+          <span style={{ marginLeft: 16 }}>
+            <b>Preview:</b>{" "}
+            {previewPegPlacement ? `${previewPegPlacement.pegId}` : "-"}
+          </span>
+        </div>
+
+        <div
+          style={{
+            marginBottom: 8,
+            padding: 8,
+            border: "1px solid #ccc",
+            background: "#fff",
+          }}
+        >
+          <div style={{ marginBottom: 6 }}>
+            <b>Dice Display:</b>
+          </div>
+
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ marginBottom: 4, fontSize: 12 }}>
+                <b>Pending</b>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", minHeight: 62 }}>
+                {pendingDice.length > 0 ? pendingDice.map((pd, index) => {
+                  const selected = selectedPendingDie === String(pd.value);
+                  return (
+                    <button
+                      key={`visual-${pd.value}-${pd.controllerId ?? "unassigned"}-${index}`}
+                      onClick={() => choosePendingDie(pd.value)}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: 4,
+                        border: selected ? "1px solid #7aa7ff" : "1px solid #bbb",
+                        borderRadius: 8,
+                        background: selected ? "#eef5ff" : "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <DieFace value={pd.value} />
+                      <div style={{ fontSize: 11 }}>
+                        {pd.controllerId ?? "unassigned"}
+                      </div>
+                    </button>
+                  );
+                }) : <div>-- none --</div>}
+              </div>
+            </div>
+
+            <div>
+              <div style={{ marginBottom: 4, fontSize: 12 }}>
+                <b>Banked</b>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", minHeight: 62 }}>
+                {Array.from({ length: bankedDice }, (_, index) => (
+                  <div
+                    key={`banked-${index}`}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: 4,
+                    }}
+                  >
+                    <DieFace value="?" />
+                    <div style={{ fontSize: 11 }}>banked</div>
+                  </div>
+                ))}
+                {bankedDice === 0 ? <div>-- none --</div> : null}
+              </div>
+            </div>
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
@@ -835,53 +1255,25 @@ export default function App() {
           <button onClick={createFreshRoom} disabled={!connected || !!joinedRoomCode}>
             Create Fresh Room
           </button>
-          <button onClick={joinRoom} disabled={!canJoinRoom || !roomCode.trim()}>
+          <button onClick={joinRoom} disabled={!(connected && !joinedRoomCode) || !roomCode.trim()}>
             Join Room
           </button>
-          <button onClick={leaveRoom} disabled={!canLeaveRoom}>
+          <button onClick={leaveRoom} disabled={!(connected && !!joinedRoomCode && phase !== "active")}>
             Leave Room
           </button>
-          <button onClick={startGame} disabled={!canStartGame}>
+          <button onClick={startGame} disabled={!(connected && !!joinedRoomCode)}>
             Start Game
           </button>
-          <button onClick={resetGame} disabled={!canSendGameplayCommand}>
+          <button onClick={resetGame} disabled={!(connected && !!joinedRoomCode)}>
             Reset Game
           </button>
-          <button onClick={sendRoll} disabled={!canSendGameplayCommand}>
+          <button onClick={sendRoll} disabled={!(connected && !!joinedRoomCode)}>
             Roll
           </button>
-          <button onClick={getLegalMoves} disabled={!canSendGameplayCommand}>
+          <button onClick={getLegalMoves} disabled={!(connected && !!joinedRoomCode)}>
             Get Legal Moves
           </button>
           <button onClick={clearLog}>Clear Log</button>
-        </div>
-
-        <div style={{ marginBottom: 8 }}>
-          <b>Pending Die Buttons:</b>
-          <div
-            style={{
-              marginTop: 6,
-              display: "flex",
-              gap: 6,
-              flexWrap: "wrap",
-            }}
-          >
-            {pendingDieButtons.length > 0 ? pendingDieButtons : <div>-- none --</div>}
-          </div>
-        </div>
-
-        <div style={{ marginBottom: 8 }}>
-          <b>Legal Moves:</b>
-          <div
-            style={{
-              marginTop: 6,
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-            }}
-          >
-            {moveButtons.length > 0 ? moveButtons : <div>-- none --</div>}
-          </div>
         </div>
 
         <div
@@ -902,7 +1294,19 @@ export default function App() {
         </div>
       </div>
 
-      <BoardRenderer arms={boardView.arms} pegPlacements={boardView.pegPlacements} />
+      <BoardRenderer
+        arms={boardView.arms}
+        pegPlacements={boardView.pegPlacements}
+        movablePegIds={movablePegIds}
+        destinationHighlights={destinationHighlights}
+        focusedPegId={focusedPegId}
+        previewPegPlacement={previewPegPlacement}
+        onPegClick={handlePegClick}
+        onDestinationClick={handleDestinationClick}
+        onDestinationHover={handleDestinationHover}
+        onDestinationLeave={handleDestinationLeave}
+        onBackgroundClick={clearBoardFocus}
+      />
     </div>
   );
 }

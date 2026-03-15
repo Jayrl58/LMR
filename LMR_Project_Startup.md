@@ -63,7 +63,9 @@ Completed during the previous session:
 
 • Replaced demo-only UI flow with a live WebSocket-connected graphical
   debug client
+
 • Verified board rendering from live server state rather than demo data
+
 • Verified end-to-end interaction loop inside the graphical UI:
 
 connect
@@ -142,11 +144,32 @@ moveResult
 • Verified that pegs occupying their highest Home spot produce no legal
   moves
 
+• Identified and corrected a startGame initialization defect where
+  games with playerCount > 2 were starting with only two active players
+
+• startGame now constructs a fresh engine state using makeState()
+  rather than mutating a development state
+
+• Verified correct player creation for multiplayer games:
+
+  p0 → p1 → p2 → p3 → p4 → p5
+
+• Verified correct turn progression across the full roster:
+
+  p0 → p1 → p2 → p3 → p4 → p5 → p0
+
+• Verified gameplay mechanics during validation:
+
+  - Base entry on rolls 1 and 6
+  - Normal track movement
+  - Kill mechanics
+  - UI rendering synchronized with authoritative server state
+
 Result:
 
-The graphical debug UI now renders the board correctly for all supported
-player counts and the engine now correctly generates center exits using
-board-size–aware track normalization.
+The graphical debug UI renders correctly for all supported board sizes,
+the server engine correctly initializes multiplayer games, and the full
+roll → move gameplay loop operates correctly across multiple players.
 
 ------------------------------------------------------------------------
 
@@ -180,6 +203,8 @@ Rules / engine validation completed:
 • Center exit generation for 8-player boards
 • Own-peg blocking on center exits
 • Finished peg immobility in home area
+• Multiplayer start-state initialization
+• Multiplayer turn sequencing
 
 Milestone state:
 
