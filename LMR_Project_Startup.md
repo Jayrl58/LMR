@@ -165,11 +165,29 @@ moveResult
   - Kill mechanics
   - UI rendering synchronized with authoritative server state
 
+Additional renderer stabilization completed:
+
+• Implemented ownership styling for board arms
+
+• Added colored ownership markers for key arm points
+  (T8 and T13)
+
+• Added filled visual highlighting for base and home holes
+
+• Added white peg outlines to maintain peg visibility on
+  same-color owned spaces
+
+• Bound arm coloring to player ownership instead of peg
+  occupancy to prevent color changes when pegs move across arms
+
+• Verified that visiting pegs do not recolor arm markers
+
 Result:
 
 The graphical debug UI renders correctly for all supported board sizes,
-the server engine correctly initializes multiplayer games, and the full
-roll → move gameplay loop operates correctly across multiple players.
+arm ownership styling remains stable during gameplay, the server engine
+correctly initializes multiplayer games, and the full roll → move
+gameplay loop operates correctly across multiple players.
 
 ------------------------------------------------------------------------
 
@@ -195,6 +213,14 @@ Current graphical debug UI capabilities:
 • Click legal move buttons to submit moves
 • View Current Actor / Pending Dice / Banked Dice
 • Inspect pending dice individually
+
+Renderer status:
+
+• Board geometry validated for 4P / 6P / 8P
+• Peg rendering stable
+• Arm ownership coloring stable
+• Base and home highlighting implemented
+• Renderer now considered stable for interaction-layer work
 
 Rules / engine validation completed:
 
@@ -225,15 +251,16 @@ UI and authoritative server engine.
 
 Immediate next task:
 
-Define and implement the first M7 interaction slice by replacing or
-reducing debug-only controls in favor of gameplay-oriented interaction
-flow, then verify the resulting turn interaction remains consistent with
-the authoritative engine contract.
+Define the first interactive board-driven move selection model to
+replace the current debug-button move submission flow.
 
 Initial focus:
 
-• Decide the first M7 interaction slice to implement
-• Reduce dependence on debug-only control flow where practical
+• Peg selection directly from the board
+• Legal destination highlighting on the board
+• Click-to-move interaction replacing debug move buttons
 • Preserve the validated roll → legalMoves → move → moveResult loop
-• Keep the graphical board and rules engine behavior aligned during the
-  transition
+• Maintain strict synchronization with the authoritative server engine
+
+Next session should begin by defining the first board interaction slice
+for M7 and implementing it incrementally.

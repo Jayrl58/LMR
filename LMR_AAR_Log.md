@@ -416,3 +416,69 @@ to minimize formatting failure risk.
 - multiplayer initialization defect resolved
 - debugging workflow pattern reinforced
 - response-formatting limitation documented for future sessions
+
+------------------------------------------------------------------------
+
+## 2026-03-16 --- Renderer Ownership Stabilization & Visual Consistency
+
+### Context
+
+Session focused on stabilizing the board renderer under real gameplay
+movement and ensuring that visual ownership markers remain consistent
+as pegs move across different arms.
+
+### Problem Observed
+
+Earlier renderer iterations derived marker colors from peg occupancy.
+
+Result:
+
+- arm markers changed color when pegs moved across them
+- visiting pegs temporarily recolored board landmarks
+- visual ownership cues became unstable during gameplay
+
+### Resolution
+
+Rendering responsibilities were separated:
+
+Arm ownership styling now derives exclusively from the
+arm-owner color.
+
+Peg rendering derives exclusively from the peg’s owning player.
+
+Key visual rules implemented:
+
+- T8 and T13 markers remain tied to the arm owner
+- Visiting pegs never recolor arm markers
+- Peg color remains constant regardless of arm location
+- Captured pegs return to base and disappear correctly
+- Peg outlines added to maintain visibility on same-color holes
+
+### Validation
+
+Manual gameplay testing across four players confirmed:
+
+- Peg colors remain stable
+- Arm markers remain stable
+- Capture behavior renders correctly
+- Multiple players on the same arm remain visually distinct
+
+### Process Insight
+
+Renderer stabilization required many iterative visual adjustments.
+
+Attempting to modify multiple rendering behaviors simultaneously
+produced regressions.
+
+The most reliable workflow proved to be:
+
+1. Restore last-known-good renderer
+2. Apply one visual rule change
+3. Re-test live gameplay movement
+4. Repeat incrementally
+
+### Outcome
+
+- Board renderer ownership model stabilized
+- Visual rules now match intended board semantics
+- Renderer ready for M7 interaction-layer development

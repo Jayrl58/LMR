@@ -334,3 +334,41 @@ Result:
 • Multi-player initialization verified correct  
 • Turn sequencing validated across full roster  
 • Engine/UI gameplay loop confirmed stable
+
+------------------------------------------------------------------------
+
+### POST-COMPLETE VALIDATION — 2026-03-16  
+(Board Ownership Styling & Dynamic Arm Color Binding)
+
+Objective:
+
+Stabilize graphical board ownership styling so arm markers remain tied
+to the owning seat/player color rather than changing based on peg
+movement or transient occupancy.
+
+Work completed:
+
+• Added visual base-hole rendering for all players  
+• Added filled ownership markers for T8 and T13  
+• Added white peg outlines for clearer peg readability against
+same-color owned spaces  
+• Bound BoardRenderer arm ownership colors to UI-provided armColors
+instead of deriving marker color from peg occupancy  
+• Added per-hole ownership highlighting for home and base spaces
+
+Validated behavior:
+
+• Peg retains its player color on all arms  
+• Landing on another player's arm does not recolor the peg  
+• T8 and T13 remain the arm owner's color  
+• Visiting pegs do not recolor owned arm markers  
+• Captured pegs return to base correctly  
+• Multiple players on the same arm remain visually distinct  
+• Four-player runtime verification completed successfully
+
+Result:
+
+• Board ownership styling is stable under live gameplay movement  
+• Renderer now supports future player-selected colors through armColors  
+• M6 graphical board presentation confirmed stable enough to advance
+with M7 work

@@ -21,6 +21,13 @@ type Spot = {
   screenY: number;
 };
 
+type BaseSpot = {
+  armIndex: number;
+  slot: number;
+  screenX: number;
+  screenY: number;
+};
+
 export type BoardHolePlacement =
   | { type: "track"; arm: number; spot: number }
   | { type: "home"; arm: number; slot: number }
@@ -44,6 +51,19 @@ const CENTER = VIEW_SIZE / 2;
 const DEFAULT_PEG_COLOR = "#2b6cb0";
 const DEFAULT_DESTINATION_COLOR = "#7aa7ff";
 const FINISHED_GOLD_COLOR = "#d4af37";
+const BASE_OUTWARD_OFFSET_MULTIPLIER = 0.95;
+const BASE_SLOT_OFFSETS = [-1.5, -0.5, 0.5, 1.5] as const;
+const SPECIAL_TRACK_RING_SPOT_IDS = new Set(["T8", "T13"]);
+const DEFAULT_ARM_COLORS = [
+  "#f59e0b",
+  "#7c3aed",
+  "#eab308",
+  "#1d4ed8",
+  "#ef4444",
+  "#16a34a",
+  "#06b6d4",
+  "#f97316",
+] as const;
 
 function degToRad(deg: number) {
   return (deg * Math.PI) / 180;
@@ -71,6 +91,7 @@ function rotatePointAround(origin: Point, p: Point, theta: number): Point {
   };
 }
 
+
 function toScreen(p: Point): Point {
   return {
     x: CENTER + p.x,
@@ -95,6 +116,34 @@ function makeBasePosition(
   return rotatePoint(base, theta);
 }
 
+function getArmRotationRadians(armIndex: number, arms: number): number {
+  const step = 360 / arms;
+  return degToRad(-armIndex * step);
+}
+
+function getBaseHoleWorldPosition(
+  armIndex: number,
+  arms: number,
+  radius: number,
+  spacing: number,
+  slot: number
+): Point {
+  const armRotation = getArmRotationRadians(armIndex, arms);
+  const armAnchor = makeBasePosition(armIndex, arms, radius, spacing);
+  const outward = rotatePoint({ x: 0, y: -1 }, armRotation);
+  const lateral = rotatePoint({ x: 1, y: 0 }, armRotation);
+  const center = {
+    x: armAnchor.x + outward.x * spacing * BASE_OUTWARD_OFFSET_MULTIPLIER,
+    y: armAnchor.y + outward.y * spacing * BASE_OUTWARD_OFFSET_MULTIPLIER,
+  };
+  const lateralOffset = BASE_SLOT_OFFSETS[Math.max(0, Math.min(3, slot))] * spacing;
+
+  return {
+    x: center.x + lateral.x * lateralOffset,
+    y: center.y + lateral.y * lateralOffset,
+  };
+}
+
 function applyBranchSwing(localGrid: Point, swing: number): Point {
   if (swing === 0) return localGrid;
   if (localGrid.y === 0) return localGrid;
@@ -114,8 +163,7 @@ function buildArm(
   spacing: number,
   swing: number
 ): Spot[] {
-  const step = 360 / arms;
-  const armRot = degToRad(-armIndex * step);
+  const armRot = getArmRotationRadians(armIndex, arms);
   const base = makeBasePosition(armIndex, arms, radius, spacing);
 
   return CANONICAL_ARM.map((spot) => {
@@ -144,18 +192,62 @@ function buildArm(
   });
 }
 
+function buildBaseSpots(
+  armIndex: number,
+  arms: number,
+  radius: number,
+  spacing: number
+): BaseSpot[] {
+  return Array.from({ length: 4 }, (_, slot) => {
+    const world = getBaseHoleWorldPosition(armIndex, arms, radius, spacing, slot);
+    const screen = toScreen(world);
+
+    return {
+      armIndex,
+      slot,
+      screenX: screen.x,
+      screenY: screen.y,
+    };
+  });
+}
+
 function getSpotIdForHole(hole: BoardHolePlacement): string | null {
   if (hole.type === "track") return `T${hole.spot}`;
   if (hole.type === "home") return `H${hole.slot}`;
   return null;
 }
 
+function getCanonicalArmColor(
+  armIndex: number,
+  resolvedArmColors?: readonly string[]
+): string {
+  if (resolvedArmColors && resolvedArmColors.length > 0) {
+    return resolvedArmColors[armIndex % resolvedArmColors.length];
+  }
+
+  return DEFAULT_ARM_COLORS[armIndex % DEFAULT_ARM_COLORS.length];
+}
+
 function getScreenPositionForHole(
   hole: BoardHolePlacement,
-  spots: Spot[]
+  spots: Spot[],
+  baseSpots: BaseSpot[]
 ): Point | null {
   if (hole.type === "center") {
     return { x: CENTER, y: CENTER };
+  }
+
+  if (hole.type === "base") {
+    const baseSpot = baseSpots.find(
+      (candidate) => candidate.armIndex === hole.arm && candidate.slot === hole.slot
+    );
+
+    if (!baseSpot) return null;
+
+    return {
+      x: baseSpot.screenX,
+      y: baseSpot.screenY,
+    };
   }
 
   const spotId = getSpotIdForHole(hole);
@@ -173,6 +265,7 @@ function getScreenPositionForHole(
   };
 }
 
+
 export default function BoardRenderer({
   arms = 4,
   pegPlacements = [],
@@ -180,6 +273,7 @@ export default function BoardRenderer({
   destinationHighlights = [],
   focusedPegId = "",
   previewPegPlacement = null,
+  armColors: providedArmColors,
   onPegClick,
   onDestinationClick,
   onDestinationHover,
@@ -192,6 +286,7 @@ export default function BoardRenderer({
   destinationHighlights?: DestinationHighlight[];
   focusedPegId?: string;
   previewPegPlacement?: PegPlacement | null;
+  armColors?: readonly string[];
   onPegClick?: (pegId: string) => void;
   onDestinationClick?: (hole: BoardHolePlacement) => void;
   onDestinationHover?: (hole: BoardHolePlacement) => void;
@@ -220,8 +315,43 @@ export default function BoardRenderer({
     ).flat();
   }, [safeArms, geometry]);
 
+  const baseSpots = useMemo(() => {
+    return Array.from({ length: safeArms }, (_, armIndex) =>
+      buildBaseSpots(armIndex, safeArms, geometry.t6Radius, geometry.spotSpacing)
+    ).flat();
+  }, [safeArms, geometry]);
+
+  const armColors = useMemo(() => {
+    return Array.from({ length: safeArms }, (_, armIndex) =>
+      getCanonicalArmColor(armIndex, providedArmColors)
+    );
+  }, [safeArms, providedArmColors]);
+
+
+
+  const normalizedPegPlacements = useMemo(() => {
+    const basePegCounts = new Map<number, number>();
+
+    return pegPlacements.map((peg) => {
+      if (peg.hole.type !== "base") return peg;
+
+      const arm = peg.hole.arm;
+      const nextSlot = basePegCounts.get(arm) ?? 0;
+      basePegCounts.set(arm, nextSlot + 1);
+
+      return {
+        ...peg,
+        hole: {
+          type: "base" as const,
+          arm,
+          slot: Math.min(nextSlot, 3),
+        },
+      };
+    });
+  }, [pegPlacements]);
+
   const placedPegs = useMemo(() => {
-    return pegPlacements
+    return normalizedPegPlacements
       .map((peg) => {
         if (peg.hole.type === "center") {
           return {
@@ -233,7 +363,7 @@ export default function BoardRenderer({
           };
         }
 
-        const position = getScreenPositionForHole(peg.hole, spots);
+        const position = getScreenPositionForHole(peg.hole, spots, baseSpots);
         if (!position) return null;
 
         return {
@@ -254,12 +384,12 @@ export default function BoardRenderer({
           isFocused: boolean;
         } => peg !== null
       );
-  }, [pegPlacements, spots, movablePegIdSet, focusedPegId]);
+  }, [normalizedPegPlacements, spots, baseSpots, movablePegIdSet, focusedPegId]);
 
   const renderedDestinationHighlights = useMemo(() => {
     return destinationHighlights
       .map((highlight, index) => {
-        const position = getScreenPositionForHole(highlight.hole, spots);
+        const position = getScreenPositionForHole(highlight.hole, spots, baseSpots);
         if (!position) return null;
 
         const isHomeDestination = highlight.hole.type === "home";
@@ -286,12 +416,16 @@ export default function BoardRenderer({
           isHomeDestination: boolean;
         } => highlight !== null
       );
-  }, [destinationHighlights, spots]);
+  }, [destinationHighlights, spots, baseSpots]);
 
   const renderedPreviewPeg = useMemo(() => {
     if (!previewPegPlacement) return null;
 
-    const position = getScreenPositionForHole(previewPegPlacement.hole, spots);
+    const position = getScreenPositionForHole(
+      previewPegPlacement.hole,
+      spots,
+      baseSpots
+    );
     if (!position) return null;
 
     return {
@@ -299,7 +433,7 @@ export default function BoardRenderer({
       screenX: position.x,
       screenY: position.y,
     };
-  }, [previewPegPlacement, spots]);
+  }, [previewPegPlacement, spots, baseSpots]);
 
   const pegRadius = Math.max(
     geometry.holeRadius - 2.5,
@@ -315,6 +449,9 @@ export default function BoardRenderer({
   const homeDestinationOuterRingRadius = geometry.holeRadius + 8;
   const destinationClickRadius = geometry.holeRadius + 10;
   const previewPegRadius = pegRadius - 1;
+  const specialTrackRingRadius = geometry.holeRadius * 2.05;
+  const homeRingRadius = geometry.holeRadius * 2.0;
+  const baseRingRadius = geometry.holeRadius * 2.0;
 
   return (
     <svg
@@ -345,6 +482,45 @@ export default function BoardRenderer({
         strokeWidth="1.3"
       />
 
+
+
+      {spots
+        .filter((s) => s.kind === "home")
+        .map((s) => (
+          <circle
+            key={`home-ring-${s.armIndex}-${s.id}`}
+            cx={s.screenX}
+            cy={s.screenY}
+            r={homeRingRadius}
+            fill={armColors[s.armIndex]}
+            opacity="0.95"
+          />
+        ))}
+
+      {baseSpots.map((s) => (
+        <circle
+          key={`base-ring-${s.armIndex}-${s.slot}`}
+          cx={s.screenX}
+          cy={s.screenY}
+          r={baseRingRadius}
+          fill={armColors[s.armIndex]}
+          opacity="0.95"
+        />
+      ))}
+
+      {spots.map((s) =>
+        SPECIAL_TRACK_RING_SPOT_IDS.has(s.id) ? (
+          <circle
+            key={`${s.armIndex}-${s.id}-special-ring`}
+            cx={s.screenX}
+            cy={s.screenY}
+            r={specialTrackRingRadius}
+            fill={armColors[s.armIndex]}
+            opacity="0.98"
+          />
+        ) : null
+      )}
+
       {spots.map((s) => (
         <circle
           key={`${s.armIndex}-${s.id}`}
@@ -352,6 +528,18 @@ export default function BoardRenderer({
           cy={s.screenY}
           r={geometry.holeRadius}
           fill={s.kind === "home" ? "#e7e7e7" : "#d7d7d7"}
+          stroke="#888"
+          strokeWidth="1.3"
+        />
+      ))}
+
+      {baseSpots.map((s) => (
+        <circle
+          key={`base-${s.armIndex}-${s.slot}`}
+          cx={s.screenX}
+          cy={s.screenY}
+          r={geometry.holeRadius}
+          fill="#d7d7d7"
           stroke="#888"
           strokeWidth="1.3"
         />
@@ -498,13 +686,7 @@ export default function BoardRenderer({
           cy={peg.screenY}
           r={pegRadius}
           fill={peg.color ?? DEFAULT_PEG_COLOR}
-          stroke={
-            peg.isFinished
-              ? FINISHED_GOLD_COLOR
-              : peg.isMovable
-                ? (peg.color ?? DEFAULT_PEG_COLOR)
-                : "#222"
-          }
+          stroke="#ffffff"
           strokeWidth={
             peg.isFinished
               ? "1.8"

@@ -13,6 +13,7 @@ type SupportedArms = 4 | 6 | 8;
 type BoardViewState = {
   arms: SupportedArms;
   pegPlacements: PegPlacement[];
+  armColors: string[];
 };
 
 type LegalMoveOption = {
@@ -40,6 +41,7 @@ const WS_URL = "ws://127.0.0.1:8787";
 const EMPTY_BOARD_VIEW: BoardViewState = {
   arms: 4,
   pegPlacements: [],
+  armColors: [],
 };
 
 const EMPTY_TURN_UI: TurnUiState = {
@@ -61,6 +63,20 @@ const PEG_COLORS: Record<string, string> = {
   p6: "cyan",
   p7: "pink",
 };
+
+function buildArmColors(
+  players: Array<{ playerId: string; seat: number }>,
+  arms: SupportedArms
+): string[] {
+  const armColors = Array.from({ length: arms }, () => "");
+
+  players.forEach((player) => {
+    if (player.seat < 0 || player.seat >= arms) return;
+    armColors[player.seat] = PEG_COLORS[player.playerId] ?? "gray";
+  });
+
+  return armColors;
+}
 
 function parseJsonIfString(value: unknown): unknown {
   if (typeof value !== "string") return value;
@@ -114,9 +130,18 @@ function buildBoardViewFromGameState(gameState: GameState): BoardViewState {
     isFinished: !!peg.isFinished,
   }));
 
+  const armColors = buildArmColors(
+    uiState.players.map((player) => ({
+      playerId: String(player.playerId),
+      seat: player.seat,
+    })),
+    arms
+  );
+
   return {
     arms,
     pegPlacements,
+    armColors,
   };
 }
 
@@ -1297,6 +1322,7 @@ export default function App() {
       <BoardRenderer
         arms={boardView.arms}
         pegPlacements={boardView.pegPlacements}
+        armColors={boardView.armColors}
         movablePegIds={movablePegIds}
         destinationHighlights={destinationHighlights}
         focusedPegId={focusedPegId}
