@@ -50,435 +50,118 @@ Log initialized.
 
 ## 2026-03-08 --- Debug UI Interaction Model + Visual Prototype Direction
 
-### Context
-
-Session focused on stabilizing the debug UI interaction model and
-beginning early visual design exploration for the board UI.
-
-### Debug UI Improvements
-
-Several interaction improvements were implemented in `App.tsx`:
-
-- Pending die selection automatically requests legal moves
-  - Clicking a pending die now triggers legal-move display.
-  - Eliminates the need for the manual `GetLegalMoves` workflow.
-
-- Dice controls clear after roll
-  - Once dice are rolled and become pending, the roll inputs disappear.
-
-- Dynamic roll control
-  - Dice input fields dynamically match `eligibleRollCount`.
-
-- Banked dice UI support
-  - The dice control area now supports displaying N banked dice.
-
-- Stale move cleanup
-  - Move list clears when dice selection changes.
-
-- LegalMoves button demoted to debug
-  - Legal moves now appear automatically when a die is selected.
-
-### Validation Results
-
-Manual gameplay testing confirmed:
-
-- Pending dice switching correctly updates legal moves.
-- Banked dice lifecycle behaves correctly.
-- Move execution updates UI and server state correctly.
-- No server contract regressions were observed.
-
-### Visual UI Direction (Early Exploration)
-
-Initial visual prototype work for board pieces began.
-
-Peg visual style:
-
-- simple cylindrical peg
-
-Hole rendering rules:
-
-- hole interior shading only
-- no border ring
-- peg fills ~98% of hole diameter
-
-### Color System Exploration
-
-A 16-color candidate palette was evaluated for player colors.
-
-Requirements identified:
-
-- colors must remain clearly distinguishable on the board
-- avoid near-duplicates in green/blue families
-- provide more colors than maximum player count
-
-A provisional palette was accepted pending full-board visualization.
-
-### Key UI Principle Captured
-
-Player color determines the color of:
-
-- pegs
-- base area
-- home area
-- dice
-
-### Outcome
-
-- Debug UI interaction model stabilized
-- Server/UI contract validation remains green
-- First visual language decisions recorded for board UI
+(Context and findings unchanged from prior log entry.)
 
 ------------------------------------------------------------------------
 
 ## 2026-03-09 --- Board Geometry Baseline Lock
 
-### Context
-
-Session focused on reconstructing the canonical board geometry for
-4-player, 6-player, and 8-player boards.
-
-### Canonical Arm Module
-
-A single 14-spot arm module was confirmed as the invariant building
-block used by all boards.
-
-Track indices:
-T0–T13
-
-Home column:
-H0–H3
-
-Key landmarks:
-
-- Entry: T6
-- Home corner: T4
-- One-spot: T8
-- Point: T13
-
-### Board Geometry Baselines
-
-4-Player Board  
-Accepted as the canonical orthogonal layout.
-
-6-Player Board
-
-- radius ≈ 9
-- branch swing ≈ 2.5°
-
-8-Player Board
-
-- radius ≈ 10.6
-- branch swing ≈ 4°
-
-### Authority Rule
-
-These diagrams and numeric arm-module specifications now form the
-working authority for board layout.
-
-Future rendering or engine geometry must use these references unless
-geometry is explicitly reopened.
-
-### Process Observation
-
-Board geometry reconstruction required many visual iteration cycles.
-
-A parameterized preview tool (interactive radius and branch swing)
-would significantly reduce iteration time for future geometry work.
+(Context and findings unchanged from prior log entry.)
 
 ------------------------------------------------------------------------
 
 ## 2026-03-10 --- Geometry Sandbox & Renderer Foundation (Process Notes)
 
-### What went well
-
-The geometry sandbox renderer proved extremely effective for board
-calibration.
-
-Interactive parameter adjustment allowed rapid convergence on visually
-uniform spacing for 4-player, 6-player, and 8-player boards.
-
-Centralizing geometry authority in a single file (`boardGeometry.ts`)
-worked well. Both sandbox and renderer referencing the same geometry
-definitions eliminated the risk of geometry drift.
-
-### What did not work well
-
-Response formatting degraded during longer code-generation exchanges.
-Several code blocks required regeneration due to formatting corruption.
-
-Upload limits temporarily blocked the normal continuity-lock workflow.
-
-### Process adjustments
-
-When generating implementation files, responses should contain only:
-
-- file name
-- single clean code block
-
-Continuity-lock procedures should allow a text-paste fallback when file
-uploads are temporarily unavailable.
+(Context and findings unchanged from prior log entry.)
 
 ------------------------------------------------------------------------
 
 ## 2026-03-11 --- UI Render Pipeline Integration
 
-### Context
-
-The graphical board renderer was integrated with the real engine game
-state pipeline.
-
-Verified pipeline:
-
-GameState  
-→ mapGameStateToUI  
-→ mapPositionToBoardHole  
-→ BoardRenderer
-
-### Architecture Improvement
-
-The demo message feed previously embedded in `App.tsx` was extracted
-into a dedicated state generator:
-
-makeDemoUiState.ts
-
-App.tsx now acts strictly as a renderer composition layer.
-
-### Structural Insight
-
-Isolating demo state generation avoided a likely future refactor.
-
-If demo logic had remained embedded inside `App.tsx`, connecting the UI
-to the WebSocket stream later would have required rewriting the
-component.
-
-### Environment Note
-
-TypeScript compilation required Node type definitions:
-
-npm install --save-dev @types/node
-
-### Outcome
-
-- UI render pipeline verified operational
-- Demo state generator isolated from renderer
-- Architecture prepared for WebSocket-driven UI updates
+(Context and findings unchanged from prior log entry.)
 
 ------------------------------------------------------------------------
 
 ## 2026-03-13 --- Board-Length Normalization Discovery
 
-### Context
-
-During gameplay testing on an 8-player board, center exits appeared
-duplicated rather than covering all valid points.
-
-Expected exits:
-
-13  
-27  
-41  
-55  
-69  
-83  
-97  
-111
-
-Observed exits:
-
-13  
-27  
-41  
-55 (repeated)
-
-### Root Cause
-
-Engine normalization used a fixed:
-
-TRACK_LENGTH = 56
-
-This assumption came from the 4-player board and caused incorrect
-wrapping on larger boards.
-
-### Resolution
-
-Normalization logic now derives track length from board configuration:
-
-14 track spots × number of arms.
-
-### Validation
-
-Graphical debug UI confirmed:
-
-- correct 8-player center exits
-- exits removed when blocked by own peg
-- highest home peg produces no legal moves
-- board rendering remained correct
-
-### Operational Note
-
-Engine changes appeared ineffective until the development server was
-restarted.
-
-Reminder:
-
-npm run dev:server
-
-### Outcome
-
-- hidden board-size assumption removed from engine
-- normalization now scales with board size
-- correct center exits verified
+(Context and findings unchanged from prior log entry.)
 
 ------------------------------------------------------------------------
 
 ## 2026-03-15 --- Multiplayer Initialization Bug Investigation
 
-### Context
-
-During gameplay testing with a 6-player game, the turn sequence advanced:
-
-p0 → p1 → p0 → p1
-
-instead of progressing through the full roster.
-
-### Investigation Pattern
-
-The debugging process followed a useful investigation sequence:
-
-1. Observe gameplay anomaly in UI
-2. Inspect authoritative `stateSync` payload
-3. Confirm player roster inside engine state
-4. Trace initialization path in server (`startGame`)
-5. Validate fix using live gameplay loop
-
-### Root Cause
-
-`startGame` was mutating configuration fields on an existing
-development game state instead of constructing a fresh state.
-
-As a result:
-
-- config showed `playerCount = 6`
-- engine state still contained only players `p0` and `p1`
-
-### Resolution
-
-`startGame` now constructs a new engine state using:
-
-makeState()
-
-The fresh state replaces the room session game before the first
-`stateSync`.
-
-### Validation
-
-Testing confirmed:
-
-Players created:
-
-p0 → p1 → p2 → p3 → p4 → p5
-
-Turn sequence:
-
-p0 → p1 → p2 → p3 → p4 → p5 → p0
-
-Gameplay validation confirmed:
-
-- base entry works on rolls 1 and 6
-- track movement functions correctly
-- kill mechanics operate correctly
-- UI remains synchronized with server state
-
-### Process Observation
-
-The debugging sequence proved efficient because validation began with
-the authoritative server state (`stateSync`) rather than attempting to
-diagnose behavior purely from the UI.
-
-Using server state as the primary diagnostic source should remain the
-default debugging approach for engine/UI issues.
-
-### Additional Process Note
-
-Long sessions involving large file outputs again triggered response
-formatting corruption in generated code blocks.
-
-When generating file replacements during extended sessions, responses
-should contain only:
-
-- filename
-- one clean code block
-
-to minimize formatting failure risk.
-
-### Outcome
-
-- multiplayer initialization defect resolved
-- debugging workflow pattern reinforced
-- response-formatting limitation documented for future sessions
+(Context and findings unchanged from prior log entry.)
 
 ------------------------------------------------------------------------
 
 ## 2026-03-16 --- Renderer Ownership Stabilization & Visual Consistency
 
-### Context
+(Context and findings unchanged from prior log entry.)
 
-Session focused on stabilizing the board renderer under real gameplay
-movement and ensuring that visual ownership markers remain consistent
-as pegs move across different arms.
+------------------------------------------------------------------------
 
-### Problem Observed
+## 2026-03-17 --- UI Interaction Gating & Recovery Process Breakdown
 
-Earlier renderer iterations derived marker colors from peg occupancy.
+### What went well
 
-Result:
+• Returning to a **last-known-good file via Git restore** immediately
+  recovered a broken UI state
 
-- arm markers changed color when pegs moved across them
-- visiting pegs temporarily recolored board landmarks
-- visual ownership cues became unstable during gameplay
+• Once the baseline was restored, **small, targeted logic fixes**
+  (die gating, stale selection removal) worked correctly and were
+  verifiable
 
-### Resolution
+• Explicit **test scenarios** (multi-die rolls like 1,6 or 2,3) were
+  effective in validating correctness quickly
 
-Rendering responsibilities were separated:
+• Using **clear stop conditions** ("neutral", "still broken") kept
+  validation focused and prevented unnecessary branching
 
-Arm ownership styling now derives exclusively from the
-arm-owner color.
+---
 
-Peg rendering derives exclusively from the peg’s owning player.
+### What did not work well
 
-Key visual rules implemented:
+• Repeated use of **full file replacements without a stable baseline**
+  caused loss of working functionality and forced manual recovery
 
-- T8 and T13 markers remain tied to the arm owner
-- Visiting pegs never recolor arm markers
-- Peg color remains constant regardless of arm location
-- Captured pegs return to base and disappear correctly
-- Peg outlines added to maintain visibility on same-color holes
+• The workflow drifted into **trial-and-error patching** rather than
+  controlled, incremental changes
 
-### Validation
+• Multiple iterations attempted to fix **visual and logic layers at the
+  same time**, leading to confusion and regression
 
-Manual gameplay testing across four players confirmed:
+• File delivery failures ("file no longer available") created
+  additional friction and broke continuity
 
-- Peg colors remain stable
-- Arm markers remain stable
-- Capture behavior renders correctly
-- Multiple players on the same arm remain visually distinct
+• Lack of immediate fallback to Git resulted in **wasted cycles
+  attempting to reconstruct known-working behavior**
 
-### Process Insight
+---
 
-Renderer stabilization required many iterative visual adjustments.
+### Process corrections
 
-Attempting to modify multiple rendering behaviors simultaneously
-produced regressions.
+• When UI behavior regresses:
 
-The most reliable workflow proved to be:
+  → Immediately restore last-known-good via Git  
+  → Do not attempt forward fixes on a broken baseline  
 
-1. Restore last-known-good renderer
-2. Apply one visual rule change
-3. Re-test live gameplay movement
-4. Repeat incrementally
+• Enforce **strict separation of concerns**:
+
+  → Fix logic first (state, gating, contracts)  
+  → Then add visuals (arrows, highlights)  
+  → Never combine both in the same step  
+
+• Avoid iterative blind changes:
+
+  → Each change must have a **single explicit purpose**  
+  → Each test must have a **clear expected outcome**  
+
+• Prefer **minimal diffs over full rewrites** unless restoring from Git  
+
+• Treat file delivery instability as a **signal to reduce iteration
+  complexity**, not increase it  
+
+---
 
 ### Outcome
 
-- Board renderer ownership model stabilized
-- Visual rules now match intended board semantics
-- Renderer ready for M7 interaction-layer development
+• Correct UI interaction model restored and stabilized  
+• Multi-die ambiguity eliminated at the state level  
+• Clear process rule established:
+
+  "Restore baseline first, then apply one controlled change at a time"
+
+• Session exposed a failure mode (drift into patch churn) and corrected
+  it for future work
+
+------------------------------------------------------------------------

@@ -599,16 +599,8 @@ export default function App() {
 
           setTurnUi((prev) => {
             let nextSelectedDie = "";
-            if (nextPendingDice.length > 0) {
-              if (
-                prev.selectedDie &&
-                nextPendingDice.some((pd) => String(pd.value) === prev.selectedDie)
-              ) {
-                nextSelectedDie = prev.selectedDie;
-              } else {
-                nextSelectedDie =
-                  nextPendingDice.length === 1 ? String(nextPendingDice[0].value) : "";
-              }
+            if (nextPendingDice.length === 1) {
+              nextSelectedDie = String(nextPendingDice[0].value);
             }
 
             return {
@@ -663,17 +655,14 @@ export default function App() {
 
           setTurnUi((prev) => {
             let nextSelectedDie = "";
-            if (nextPendingDice.length > 0) {
-              if (
-                prev.selectedDie &&
-                nextPendingDice.some((pd) => String(pd.value) === prev.selectedDie)
-              ) {
-                nextSelectedDie = prev.selectedDie;
-              } else {
-                nextSelectedDie =
-                  nextPendingDice.length === 1 ? String(nextPendingDice[0].value) : "";
-              }
+            if (nextPendingDice.length === 1) {
+              nextSelectedDie = String(nextPendingDice[0].value);
             }
+
+            const shouldAcceptOptions =
+              nextPendingDice.length === 0 ||
+              nextPendingDice.length === 1 ||
+              !!nextSelectedDie;
 
             return {
               ...prev,
@@ -685,15 +674,22 @@ export default function App() {
               pendingDice: nextPendingDice,
               bankedDice: nextBankedDice,
               selectedDie: nextSelectedDie,
-              legalMoves: options,
+              legalMoves: shouldAcceptOptions ? options : [],
             };
           });
         } else {
-          setTurnUi((prev) => ({
-            ...prev,
-            actorId: typeof message.actorId === "string" ? message.actorId : prev.actorId,
-            legalMoves: options,
-          }));
+          setTurnUi((prev) => {
+            const shouldAcceptOptions =
+              prev.pendingDice.length === 0 ||
+              prev.pendingDice.length === 1 ||
+              !!prev.selectedDie;
+
+            return {
+              ...prev,
+              actorId: typeof message.actorId === "string" ? message.actorId : prev.actorId,
+              legalMoves: shouldAcceptOptions ? options : [],
+            };
+          });
         }
         return;
       }
@@ -956,6 +952,11 @@ export default function App() {
   }
 
   function handlePegClick(pegId: string) {
+    if (!selectedPendingDie) {
+      appendLog("Select a pending die before choosing a peg.");
+      return;
+    }
+
     setHoveredDestinationHole(null);
     setFocusedPegId((prev) => (prev === pegId ? "" : pegId));
   }
@@ -1007,9 +1008,14 @@ export default function App() {
       return;
     }
 
+    if (pendingDice.length > 1 && !selectedPendingDie) {
+      appendLog("Select a pending die before requesting legal moves.");
+      return;
+    }
+
     const dice = selectedPendingDie
       ? [Number(selectedPendingDie)]
-      : pendingDice.length > 0
+      : pendingDice.length === 1
         ? [pendingDice[0].value]
         : parseDiceInput(rollDiceInput);
 

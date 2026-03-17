@@ -664,21 +664,6 @@ export default function BoardRenderer({
         ) : null
       )}
 
-      {placedPegs.map((peg) =>
-        peg.isMovable ? (
-          <circle
-            key={`${peg.pegId}-ring`}
-            cx={peg.screenX}
-            cy={peg.screenY}
-            r={movableRingRadius}
-            fill="none"
-            stroke={peg.color ?? DEFAULT_PEG_COLOR}
-            strokeWidth={peg.isFocused ? "0" : "3"}
-            opacity={peg.isFocused ? "0" : "0.9"}
-          />
-        ) : null
-      )}
-
       {placedPegs.map((peg) => (
         <circle
           key={peg.pegId}
