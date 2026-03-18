@@ -3,6 +3,7 @@ import {
   BOARD_GEOMETRY,
   CANONICAL_ARM,
 } from "../../../board_geometry/boardGeometry";
+import type { ArrowIndicator } from "../getArrowIndicators";
 
 type BoardArms = 4 | 6 | 8;
 
@@ -90,7 +91,6 @@ function rotatePointAround(origin: Point, p: Point, theta: number): Point {
     y: origin.y + dx * s + dy * c,
   };
 }
-
 
 function toScreen(p: Point): Point {
   return {
@@ -265,11 +265,23 @@ function getScreenPositionForHole(
   };
 }
 
+function normalizeVector(dx: number, dy: number): { dx: number; dy: number } {
+  const length = Math.hypot(dx, dy);
+  if (length <= 0.0001) {
+    return { dx: 0, dy: -1 };
+  }
+
+  return {
+    dx: dx / length,
+    dy: dy / length,
+  };
+}
 
 export default function BoardRenderer({
   arms = 4,
   pegPlacements = [],
   movablePegIds = [],
+  arrowIndicators = [],
   destinationHighlights = [],
   focusedPegId = "",
   previewPegPlacement = null,
@@ -283,6 +295,7 @@ export default function BoardRenderer({
   arms?: BoardArms;
   pegPlacements?: PegPlacement[];
   movablePegIds?: string[];
+  arrowIndicators?: ArrowIndicator[];
   destinationHighlights?: DestinationHighlight[];
   focusedPegId?: string;
   previewPegPlacement?: PegPlacement | null;
@@ -326,8 +339,6 @@ export default function BoardRenderer({
       getCanonicalArmColor(armIndex, providedArmColors)
     );
   }, [safeArms, providedArmColors]);
-
-
 
   const normalizedPegPlacements = useMemo(() => {
     const basePegCounts = new Map<number, number>();
@@ -440,7 +451,6 @@ export default function BoardRenderer({
     geometry.holeRadius * 0.68
   );
 
-  const movableRingRadius = pegRadius + 5;
   const focusedRingRadius = pegRadius + 9;
   const finishedGoldRingRadius = pegRadius + 3;
   const finishedOuterRingRadius = pegRadius + 8;
@@ -452,6 +462,70 @@ export default function BoardRenderer({
   const specialTrackRingRadius = geometry.holeRadius * 2.05;
   const homeRingRadius = geometry.holeRadius * 2.0;
   const baseRingRadius = geometry.holeRadius * 2.0;
+
+  const renderedArrows = useMemo(() => {
+    const pegById = new Map(
+      placedPegs.map((peg) => [peg.pegId, peg] as const)
+    );
+
+    const arrowPegRadius = Math.max(
+      geometry.holeRadius - 2.5,
+      geometry.holeRadius * 0.68
+    );
+    const lineStartOffset = arrowPegRadius + 7;
+    const lineLength = Math.max(geometry.holeRadius * 1.3, 16);
+    const tipOffset = lineStartOffset + lineLength;
+    const headLength = Math.max(geometry.holeRadius * 0.7, 8);
+    const headWidth = Math.max(geometry.holeRadius * 0.5, 6);
+
+    return arrowIndicators
+      .map((indicator) => {
+        const peg = pegById.get(indicator.pegId);
+        if (!peg) return null;
+
+        const fromPos = getScreenPositionForHole(indicator.fromHole, spots, baseSpots);
+        const toPos = getScreenPositionForHole(indicator.toHole, spots, baseSpots);
+        if (!fromPos || !toPos) return null;
+
+        const unit = normalizeVector(toPos.x - fromPos.x, toPos.y - fromPos.y);
+        const perp = { dx: -unit.dy, dy: unit.dx };
+
+        const startX = peg.screenX + unit.dx * lineStartOffset;
+        const startY = peg.screenY + unit.dy * lineStartOffset;
+        const tipX = peg.screenX + unit.dx * tipOffset;
+        const tipY = peg.screenY + unit.dy * tipOffset;
+        const baseX = tipX - unit.dx * headLength;
+        const baseY = tipY - unit.dy * headLength;
+
+        const leftX = baseX + perp.dx * headWidth;
+        const leftY = baseY + perp.dy * headWidth;
+        const rightX = baseX - perp.dx * headWidth;
+        const rightY = baseY - perp.dy * headWidth;
+
+        return {
+          key: `${indicator.pegId}-${JSON.stringify(indicator.fromHole)}-${JSON.stringify(indicator.toHole)}-arrow`,
+          color: peg.color ?? DEFAULT_PEG_COLOR,
+          startX,
+          startY,
+          tipX,
+          tipY,
+          points: `${tipX},${tipY} ${leftX},${leftY} ${rightX},${rightY}`,
+        };
+      })
+      .filter(
+        (
+          arrow
+        ): arrow is {
+          key: string;
+          color: string;
+          startX: number;
+          startY: number;
+          tipX: number;
+          tipY: number;
+          points: string;
+        } => arrow !== null
+      );
+  }, [arrowIndicators, placedPegs, spots, baseSpots, geometry.holeRadius]);
 
   return (
     <svg
@@ -481,8 +555,6 @@ export default function BoardRenderer({
         stroke="#888"
         strokeWidth="1.3"
       />
-
-
 
       {spots
         .filter((s) => s.kind === "home")
@@ -543,6 +615,26 @@ export default function BoardRenderer({
           stroke="#888"
           strokeWidth="1.3"
         />
+      ))}
+
+      {renderedArrows.map((arrow) => (
+        <g key={arrow.key} pointerEvents="none">
+          <line
+            x1={arrow.startX}
+            y1={arrow.startY}
+            x2={arrow.tipX}
+            y2={arrow.tipY}
+            stroke={arrow.color}
+            strokeWidth="3.2"
+            strokeLinecap="round"
+            opacity="0.9"
+          />
+          <polygon
+            points={arrow.points}
+            fill={arrow.color}
+            opacity="0.94"
+          />
+        </g>
       ))}
 
       {renderedDestinationHighlights.map((highlight) => (

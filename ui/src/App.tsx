@@ -7,6 +7,7 @@ import BoardRenderer, {
 import { mapGameStateToUI } from "../../src/ui/mapGameStateToUI";
 import { mapPositionToBoardHole } from "../../src/ui/mapPositionToBoardHole";
 import type { GameState } from "../../src/types";
+import { getArrowIndicators } from "./getArrowIndicators";
 
 type SupportedArms = 4 | 6 | 8;
 
@@ -491,6 +492,13 @@ export default function App() {
   const selectedPendingDie = turnUi.selectedDie;
   const legalMoveOptions = turnUi.legalMoves;
   const movablePegIds = extractMovablePegIds(legalMoveOptions);
+  const arrowIndicators = getArrowIndicators({
+    awaitingDice: turnUi.awaitingDice,
+    pendingDice: turnUi.pendingDice,
+    selectedDie: turnUi.selectedDie,
+    legalMoveOptions,
+    boardArms: boardView.arms,
+  });
   const destinationHighlights = extractDestinationHighlights(
     legalMoveOptions,
     boardView.arms,
@@ -1199,6 +1207,9 @@ export default function App() {
             <b>Focused Peg:</b> {focusedPegId || "-"}
           </span>
           <span style={{ marginLeft: 16 }}>
+            <b>Arrows Ready:</b> {arrowIndicators.length}
+          </span>
+          <span style={{ marginLeft: 16 }}>
             <b>Preview:</b>{" "}
             {previewPegPlacement ? `${previewPegPlacement.pegId}` : "-"}
           </span>
@@ -1330,6 +1341,7 @@ export default function App() {
         pegPlacements={boardView.pegPlacements}
         armColors={boardView.armColors}
         movablePegIds={movablePegIds}
+        arrowIndicators={arrowIndicators}
         destinationHighlights={destinationHighlights}
         focusedPegId={focusedPegId}
         previewPegPlacement={previewPegPlacement}

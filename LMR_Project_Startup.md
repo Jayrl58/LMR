@@ -61,35 +61,48 @@ geometry authority.
 
 Completed during the previous session:
 
-• Stabilized UI interaction model for multi-die scenarios  
+• Implemented M7 arrow affordance system  
 
-• Eliminated implicit die selection behavior  
+• Built arrow indicator pipeline:
 
-• Implemented strict die-selection gating:
+  - legalMoves → getArrowIndicators → App.tsx → BoardRenderer  
 
-  - No legal move preview when multiple dice exist and none selected  
-  - No peg interaction allowed without selected die  
-  - No fallback to “first die”  
+• Replaced direction-based arrows with geometry-based arrows:
 
-• Fixed stale selectedDie persistence across state transitions  
+  - fromHole → toHole  
+  - direction derived in renderer from screen positions  
 
-• Ensured legalMoves are only displayed when:
+• Enabled multiple arrows per peg:
 
-  - Exactly one die exists, OR  
-  - A die is explicitly selected  
+  - one arrow per legal move  
+  - resolves point-with-1 and center-with-1 ambiguity  
 
-• Verified correct behavior:
+• Fixed arrow gating:
 
-  - Multi-die roll → neutral board  
-  - Selecting a die → correct move preview  
-  - Peg click without die → explicit instruction message  
+  - no longer dependent on awaitingDice  
+  - driven directly by legalMoveOptions  
 
-• Restored stable App.tsx baseline using last known-good commit  
+• Preserved multi-die interaction rules:
+
+  - no arrows when multiple dice exist and none selected  
+
+• Resolved renderer issues:
+
+  - fixed missing prop wiring in App.tsx  
+  - resolved data-shape mismatch (direction → from/to)  
+  - eliminated duplicate React keys  
+
+• Verified behavior:
+
+  - arrows appear only when legal moves exist  
+  - multiple arrows render correctly per peg  
+  - arrow direction matches board geometry  
+  - destination click model unchanged  
 
 Result:
 
-The UI interaction model is now deterministic, rule-aligned, and free of
-implicit or hidden state behavior.
+M7 arrow affordance system is operational, stable, and aligned with
+rules and board geometry.
 
 ------------------------------------------------------------------------
 
@@ -121,7 +134,7 @@ Renderer status:
 • Peg rendering stable  
 • Arm ownership coloring stable  
 • Base and home highlighting implemented  
-• No visual move affordance layer currently active  
+• Arrow affordance layer implemented (multi-arrow, directional)  
 
 Rules / engine validation completed:
 
@@ -136,43 +149,43 @@ Rules / engine validation completed:
 Milestone state:
 
 • M6 — Graphical Board UI complete  
-• M7 — Gameplay Interaction Layer ready to begin  
+• M7 — Gameplay Interaction Layer in progress (arrow layer complete)  
 
 ------------------------------------------------------------------------
 
 ## Next Action
 
-Begin M7 — Gameplay Interaction Layer.
+Continue M7 — Gameplay Interaction Layer.
 
 Objective:
 
-Introduce a clear, intuitive, and unambiguous visual interaction model
-for move selection that replaces debug-driven workflows.
+Refine and complete the gameplay interaction experience now that the
+arrow affordance system is operational.
 
-Immediate next task:
+Immediate next task (choose one direction):
 
-Implement **peg-based affordance signaling using directional arrows**.
+Option A — Arrow Visual Refinement  
+• Improve spacing when multiple arrows originate from same peg  
+• Adjust arrow length / thickness for readability  
+• Add subtle fade or layering rules to reduce clutter  
 
-Initial focus:
+Option B — Destination Highlight Alignment  
+• Ensure destination highlights and arrows are visually coordinated  
+• Validate that all arrow endpoints correspond to clickable targets  
+• Improve clarity in dense move scenarios  
 
-• Identify pegs with legal moves (based on selected die)  
-• Render directional arrows originating from those pegs  
-• Arrows indicate “this peg can move”  
-• Do NOT use rings, outlines, or color-only differentiation  
-• Keep board readable and uncluttered  
+Option C — Interaction Feedback Polish  
+• Add hover or focus feedback tied to arrows and pegs  
+• Improve clarity of selected die state on board  
+• Reduce reliance on debug panel for understanding state  
 
-Constraints:
+Constraint:
 
-• No visual output when multiple dice exist and no die is selected  
-• Arrows must be subtle and not overwhelm board readability  
-• Must map directly to legalMoves (no derived/guessed state)  
-• Must not introduce ambiguity between peg selection and destination  
+• Do not change rules authority or move generation  
+• Do not introduce clickable arrows  
+• Maintain strict multi-die gating model  
 
-Next session should begin by:
-
-1. Defining arrow rendering contract (source, direction, size)  
-2. Mapping legalMoves → movable pegs  
-3. Rendering minimal arrow indicators on those pegs only  
-4. Verifying clarity before adding destination-level visuals  
+Next session should begin by selecting one refinement path and executing
+a single focused improvement.
 
 ------------------------------------------------------------------------

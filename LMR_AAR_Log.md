@@ -1,167 +1,91 @@
 # LMR Project After-Action Review Log
 
-Purpose: Capture significant architectural, design, milestone, or
-invariant insights. Entries are added only when meaningful signal
-exists.
+Purpose: Capture significant process improvements and failure patterns
+to prevent recurrence.
 
 ------------------------------------------------------------------------
 
-## Baseline
-
-Log initialized.
-
-------------------------------------------------------------------------
-
-## 2026-02-23 --- WS Turn-Owner Desync Reproduction
-
-(Context and findings unchanged from prior log entry.)
-
-------------------------------------------------------------------------
-
-## 2026-02-27 --- M6 Foundation + Multi-Team Terminal Hardening
-
-(Context and findings unchanged from prior log entry.)
-
-------------------------------------------------------------------------
-
-## 2026-03-02 --- Server ↔ UI Contract Hardening (External Dice Flow)
-
-(Context and findings unchanged from prior log entry.)
-
-------------------------------------------------------------------------
-
-## 2026-03-04 --- Console Validation and Rendering Fix
-
-(Context and findings unchanged from prior log entry.)
-
-------------------------------------------------------------------------
-
-## 2026-03-05 --- Minimal UI Stabilization
-
-(Context and findings unchanged from prior log entry.)
-
-------------------------------------------------------------------------
-
-## 2026-03-06 --- Dice Lifecycle Validation
-
-(Context and findings unchanged from prior log entry.)
-
-------------------------------------------------------------------------
-
-## 2026-03-08 --- Debug UI Interaction Model + Visual Prototype Direction
-
-(Context and findings unchanged from prior log entry.)
-
-------------------------------------------------------------------------
-
-## 2026-03-09 --- Board Geometry Baseline Lock
-
-(Context and findings unchanged from prior log entry.)
-
-------------------------------------------------------------------------
-
-## 2026-03-10 --- Geometry Sandbox & Renderer Foundation (Process Notes)
-
-(Context and findings unchanged from prior log entry.)
-
-------------------------------------------------------------------------
-
-## 2026-03-11 --- UI Render Pipeline Integration
-
-(Context and findings unchanged from prior log entry.)
-
-------------------------------------------------------------------------
-
-## 2026-03-13 --- Board-Length Normalization Discovery
-
-(Context and findings unchanged from prior log entry.)
-
-------------------------------------------------------------------------
-
-## 2026-03-15 --- Multiplayer Initialization Bug Investigation
-
-(Context and findings unchanged from prior log entry.)
-
-------------------------------------------------------------------------
-
-## 2026-03-16 --- Renderer Ownership Stabilization & Visual Consistency
-
-(Context and findings unchanged from prior log entry.)
-
-------------------------------------------------------------------------
-
-## 2026-03-17 --- UI Interaction Gating & Recovery Process Breakdown
+## 2026-03-18 --- Arrow Rendering (M7) Integration Process
 
 ### What went well
 
-• Returning to a **last-known-good file via Git restore** immediately
-  recovered a broken UI state
+• Establishing a **baseline renderer reset** enabled recovery from
+repeated rendering failures
 
-• Once the baseline was restored, **small, targeted logic fixes**
-  (die gating, stale selection removal) worked correctly and were
-  verifiable
+• Breaking the problem into **isolated validation steps** (render
+baseline → single arrow → integration → multi-arrow) restored forward
+progress
 
-• Explicit **test scenarios** (multi-die rolls like 1,6 or 2,3) were
-  effective in validating correctness quickly
+• Using **visual confirmation gates** ("do arrows appear?", "are they
+directional?") provided fast validation loops
 
-• Using **clear stop conditions** ("neutral", "still broken") kept
-  validation focused and prevented unnecessary branching
+• Final architecture (App → getArrowIndicators → BoardRenderer) proved
+clean and extensible
 
----
+------------------------------------------------------------------------
 
 ### What did not work well
 
-• Repeated use of **full file replacements without a stable baseline**
-  caused loss of working functionality and forced manual recovery
+• Initial attempts violated process rule:
 
-• The workflow drifted into **trial-and-error patching** rather than
-  controlled, incremental changes
+→ Multiple layers (logic + rendering + integration) were modified
+simultaneously
 
-• Multiple iterations attempted to fix **visual and logic layers at the
-  same time**, leading to confusion and regression
+• Repeated full-file replacements were attempted **without confirming
+baseline stability first**
 
-• File delivery failures ("file no longer available") created
-  additional friction and broke continuity
+• Arrow logic was introduced before confirming:
 
-• Lack of immediate fallback to Git resulted in **wasted cycles
-  attempting to reconstruct known-working behavior**
+→ data availability\
+→ render pipeline integrity
 
----
+• This resulted in:
+
+→ blank screens\
+→ lost renderer state\
+→ unnecessary recovery cycles
+
+------------------------------------------------------------------------
 
 ### Process corrections
 
-• When UI behavior regresses:
+• Enforce **render baseline first** for any UI feature:
 
-  → Immediately restore last-known-good via Git  
-  → Do not attempt forward fixes on a broken baseline  
+→ Renderer must display board correctly before adding features
 
-• Enforce **strict separation of concerns**:
+• Introduce new features in strict order:
 
-  → Fix logic first (state, gating, contracts)  
-  → Then add visuals (arrows, highlights)  
-  → Never combine both in the same step  
+1)  Static render (no logic)
+2)  Single controlled test case
+3)  Data wiring
+4)  Full integration
 
-• Avoid iterative blind changes:
+• Never introduce:
 
-  → Each change must have a **single explicit purpose**  
-  → Each test must have a **clear expected outcome**  
+→ data logic\
+→ rendering changes\
+→ integration wiring
 
-• Prefer **minimal diffs over full rewrites** unless restoring from Git  
+in the same step
 
-• Treat file delivery instability as a **signal to reduce iteration
-  complexity**, not increase it  
+• If UI disappears:
 
----
+→ Immediately revert to last-known-good\
+→ Do not attempt forward debugging on a broken render
+
+------------------------------------------------------------------------
 
 ### Outcome
 
-• Correct UI interaction model restored and stabilized  
-• Multi-die ambiguity eliminated at the state level  
-• Clear process rule established:
+• Arrow system successfully implemented with:
 
-  "Restore baseline first, then apply one controlled change at a time"
+→ multi-arrow support\
+→ correct directional vectors\
+→ stable rendering
 
-• Session exposed a failure mode (drift into patch churn) and corrected
-  it for future work
+• Reinforced process rule:
+
+"UI features must be built from a verified visual baseline upward, not
+integrated all at once."
 
 ------------------------------------------------------------------------

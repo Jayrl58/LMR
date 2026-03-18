@@ -43,7 +43,7 @@ Expand milestones only when explicitly requested
 ✓ M4 — Team Model Expansion  
 ✓ M5 — Game Setup UI  
 ✓ M6 — Graphical Board UI  
-→ M7 — Gameplay Interaction Layer  
+○ M7 — Gameplay Interaction Layer  
 → M8 — Game Completion & Results  
 → M9 — Production Readiness
 
@@ -63,6 +63,34 @@ Current atomic milestone state:
 ✓ M6.4 — Dice contract compatibility (double-dice + bank lifecycle)  
 ✓ M6.5 — Functional gameplay loop validation  
 ✓ M6.6 — Debug UI console refinement  
+
+------------------------------------------------------------------------
+
+## M7 — Gameplay Interaction Layer (Expanded Status)
+
+M7 represents the transition from basic clickable move interaction to
+clear, rule-aligned graphical affordance signaling on the board.
+
+Current atomic milestone state:
+
+✓ M7.1 — Multi-die interaction gating stabilization  
+✓ M7.2 — Peg arrow affordance pipeline (single-arrow baseline)  
+✓ M7.3 — Directional arrow rendering from board geometry  
+✓ M7.4 — Multi-arrow per legal move support  
+○ M7.5 — Additional gameplay interaction refinements  
+→ M7.6 — Milestone completion lock
+
+Notes:
+
+• Arrow indicators are now generated from legal move data and rendered
+  at the peg level in board space.  
+• Multiple legal moves for a single peg now render as multiple arrows.  
+• Arrow direction is derived from from-hole → to-hole geometry rather
+  than coarse logical direction guesses.  
+• Arrow indicators are informational only; destination spots remain the
+  clickable interaction target.  
+• Multi-die state remains gated: no arrows are shown until a die is
+  explicitly selected when multiple pending dice exist.
 
 ------------------------------------------------------------------------
 
@@ -204,5 +232,56 @@ Result:
 • UI interaction model now deterministic and rule-aligned  
 • Eliminates hidden state ambiguity in player decision flow  
 • Establishes foundation for future visual affordance layer (M7)
+
+------------------------------------------------------------------------
+
+### M7 VALIDATION RECORD — 2026-03-18  
+(Arrow Affordance Layer — Multi-Arrow Directional Rendering)
+
+Objective:
+
+Add board-level arrow affordances that identify all currently legal peg
+moves while preserving the existing clickable destination model.
+
+Issues observed during implementation:
+
+• Initial single-arrow-per-peg contract hid some legal choices in
+  point-with-1 and center-with-1 cases  
+• Early direction derivation based on abstract move categories pointed
+  arrows incorrectly relative to board geometry  
+• Arrow generation was initially gated on awaitingDice rather than live
+  legal move availability  
+• Renderer keying and data-shape mismatches caused intermediate React
+  warnings and transient runtime failures during development  
+
+Resolution:
+
+• Established legalMoves as the source of truth for arrow generation  
+• Reworked arrow payload from pegId + direction to pegId + fromHole +
+  toHole  
+• Moved final direction derivation into BoardRenderer using actual board
+  screen positions  
+• Expanded output from one-arrow-per-peg to one-arrow-per-legal-move  
+• Kept arrows informational only; destination spots remain the
+  interaction target  
+• Preserved multi-die gating so arrows remain suppressed until a die is
+  selected in ambiguous multi-die states  
+• Added unique per-move arrow keys to stabilize React rendering
+
+Validated behavior:
+
+• Movable pegs display arrows only when legal moves exist  
+• Pegs with multiple legal moves display multiple arrows  
+• Point-with-1 center and track options render distinctly  
+• Arrow direction aligns with actual board geometry  
+• Existing destination click model remains intact  
+
+Result:
+
+• M7 gameplay affordance layer is now substantively implemented and
+  usable  
+• Board interaction clarity improved without changing move authority  
+• Remaining M7 work, if any, is refinement rather than foundational
+  pipeline work
 
 ------------------------------------------------------------------------
