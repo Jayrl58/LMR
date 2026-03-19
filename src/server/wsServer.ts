@@ -736,9 +736,13 @@ export function startWsServer(opts: WsServerOptions) {
 
       const msg = parsed as ClientMessage;
 
-      const cid = wsClientId.get(ws) ?? "anon";
+      const cid = wsClientId.get(ws);
 
       if (msg.type === "joinRoom") {
+        if (!cid || cid === "anon") {
+          send(ws, makeError("BAD_MESSAGE", "Must send hello with clientId before joinRoom.", reqId));
+          return;
+        }
         const roomCode =
           typeof (msg as any).roomCode === "string" && (msg as any).roomCode.trim()
             ? String((msg as any).roomCode).trim()

@@ -150,8 +150,6 @@ function optionMatchesSelectedDie(
   option: LegalMoveOptionInput,
   selectedDie: string
 ): boolean {
-  if (!selectedDie) return true;
-
   const selectedDieValue = Number(selectedDie);
   if (!Number.isInteger(selectedDieValue)) return false;
 
@@ -174,9 +172,10 @@ export function getArrowIndicators({
   boardArms,
 }: GetArrowIndicatorsInput): ArrowIndicator[] {
   void awaitingDice;
+  void pendingDice;
 
+  if (!selectedDie) return [];
   if (legalMoveOptions.length === 0) return [];
-  if (pendingDice.length > 1 && !selectedDie) return [];
 
   const filteredOptions = legalMoveOptions.filter((option) =>
     optionMatchesSelectedDie(option, selectedDie)

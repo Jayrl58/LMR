@@ -285,3 +285,82 @@ Result:
   pipeline work
 
 ------------------------------------------------------------------------
+
+### M7 VALIDATION RECORD — 2026-03-19  
+(Double-Dice Selected-Die Interaction Loop)
+
+Objective:
+
+Complete the selected-die gameplay loop for multi-die turns so that the
+active client can switch between pending dice, preview the correct legal
+destination for each die, execute a move by clicking the destination,
+and consume only the spent die while preserving remaining pending dice.
+
+Issues observed during implementation:
+
+• Room/join and lobby flow initially worked, but the active gameplay UI
+  repeatedly drifted between simplified debug App.tsx variants and the
+  working multiplayer shell  
+• Die clicks sometimes changed local selection state without issuing a
+  fresh die-specific legalMoves request  
+• legalMoves responses sometimes overwrote the full pending-dice set
+  with only the currently selected die  
+• move submission initially used stale or inferred move-dice state
+  rather than the explicitly selected die  
+• moveResult acknowledgement initially updated status text only, leaving
+  the board and pending-dice display stale  
+• legal move payloads for enter moves did not expose enough die context
+  for correct UI-side inference, requiring die-specific refresh requests
+  rather than pure local filtering
+
+Root cause:
+
+• onSelectDie was at one point bound to local state update instead of
+  the handler that requests getLegalMoves for the chosen die  
+• pendingDice lifecycle handling was split incorrectly between roll,
+  legalMoves, and moveResult paths  
+• the board state after move application was not being refreshed from
+  the returned moveResult payload  
+• attempted UI-side inference from raw legalMoves payloads was
+  insufficient because legalMoves.ts evaluates only the requested die
+  input and getLegalMoves must therefore be requested explicitly per
+  selected die  
+• temporary debug replacements obscured which App.tsx was actually
+  active in the project at a given moment
+
+Resolution:
+
+• Restored the real gameplay App.tsx path and re-established the
+  multiplayer/double-dice shell as the active working file  
+• Bound die clicks to the handler that requests getLegalMoves for the
+  explicitly selected die  
+• Changed legalMoves handling so pendingDice seeds once when empty but
+  is not overwritten by later die-specific legalMoves responses  
+• Changed move submission to spend the explicitly selected die  
+• Applied returned moveResult next-state data back into the UI so the
+  board and pending-dice state refresh immediately after a move  
+• Verified server-side legalMoves payloads now carry die attribution for
+  generated moves and confirmed handleMessage.ts already routes
+  getLegalMoves using the requested die value
+
+Validated behavior:
+
+• Fresh room/lobby flow still works before gameplay  
+• With Double Dice enabled, rolling 1 and 6 produces two pending dice  
+• Clicking die 1 and die 6 now changes the highlighted legal
+  destination appropriately  
+• Clicking the highlighted destination applies the move successfully  
+• After spending die 6, the peg moves to the point and die 1 remains
+  pending for subsequent resolution  
+• The selected-die request/preview/execute loop is now functioning end
+  to end
+
+Result:
+
+• The selected-die interaction loop is operational in the graphical UI  
+• Multi-die gameplay now supports deterministic die selection, preview,
+  move execution, and partial pending-die consumption  
+• Remaining M7 work is refinement of interaction affordances and cleanup
+  rather than restoration of core move authority
+
+------------------------------------------------------------------------

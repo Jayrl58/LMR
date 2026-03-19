@@ -29,7 +29,6 @@ function trackLengthForState(state: GameState): number {
   return trackLengthForPlayerCount(state.config.playerCount);
 }
 
-// In this snapshot, seat->entry mapping is seat*14. (Matches current boardMapping placeholder.)
 function pointIndicesForBoard(state: GameState): number[] {
   const arms = boardArmCountFor(state);
   const trackLength = trackLengthForState(state);
@@ -84,12 +83,7 @@ function buildTrackPathFrom(
   return path;
 }
 
-/* ---------- CENTER MOVES (LMR) ---------- */
-/*
-- Enter center: roll=1 from ANY Point to center (captures occupant if another player).
-- Exit center: roll=1 from center to ANY Point (captures occupant if another player).
-- No "passing through" center on normal movement.
-*/
+/* ---------- CENTER MOVES ---------- */
 
 function listEnterCenterMoves(state: GameState, actor: PlayerId, steps: number): Move[] {
   if (steps !== 1) return [];
@@ -103,7 +97,6 @@ function listEnterCenterMoves(state: GameState, actor: PlayerId, steps: number):
 
     const to: SpotRef = { zone: "center" };
 
-    // Own peg already in center blocks entry.
     const ownBlocks = state.pegStates[actor].some((p) => spotsEqual(p.position, to));
     if (ownBlocks) continue;
 
@@ -116,6 +109,7 @@ function listEnterCenterMoves(state: GameState, actor: PlayerId, steps: number):
       kind: "enterCenter",
       actorPlayerId: actor,
       pegIndex: peg.pegIndex,
+      die: 1, // ✅ added
       from: { zone: "track", index: peg.position.index },
       to: { zone: "center" },
       path: [{ zone: "track", index: peg.position.index }, { zone: "center" }],
@@ -138,7 +132,6 @@ function listExitCenterMoves(state: GameState, actor: PlayerId, steps: number): 
     for (const destIdx of pointIdxs) {
       const to: SpotRef = { zone: "track", index: destIdx };
 
-      // Own peg on destination blocks exit.
       const ownBlocks = state.pegStates[actor].some((p) => spotsEqual(p.position, to));
       if (ownBlocks) continue;
 
@@ -151,6 +144,7 @@ function listExitCenterMoves(state: GameState, actor: PlayerId, steps: number): 
         kind: "exitCenter",
         actorPlayerId: actor,
         pegIndex: peg.pegIndex,
+        die: 1, // ✅ added
         from: { zone: "center" },
         to,
         path: [{ zone: "center" }, { zone: "track", index: destIdx }],
@@ -163,10 +157,6 @@ function listExitCenterMoves(state: GameState, actor: PlayerId, steps: number): 
 }
 
 /* ---------- MAIN ---------- */
-
-export function listLegalMoves(state: GameState, dice: readonly number[]): Move[] {
-  return listLegalMovesForPlayer(state, state.turn.currentPlayerId, dice);
-}
 
 export function listLegalMovesForPlayer(
   state: GameState,
@@ -183,28 +173,20 @@ export function listLegalMovesForPlayer(
   const entryIdx = getTrackEntryIndex(state, actorPlayerId);
   const homeEntryIdx = getHomeEntryTrackIndex(state, actorPlayerId);
 
-  // Center moves
   moves.push(...listEnterCenterMoves(state, actorPlayerId, steps));
   moves.push(...listExitCenterMoves(state, actorPlayerId, steps));
 
-  // ENTER moves (base -> track)
   if (steps === 6 || BASE_ENTRY_ROLLS.includes(steps)) {
-    // LMR entry mapping (law):
-    // - roll 1 enters on the player's 1 Spot (entryIdx + 8)
-    // - roll 6 enters on the player's Point (entryIdx + 13)
     const destIdx =
       steps === 6
         ? normalizeTrackIndex(entryIdx + 13, trackLength)
-        : steps === 1
-          ? normalizeTrackIndex(entryIdx + 8, trackLength)
-          : normalizeTrackIndex(entryIdx, trackLength); // fallback for any other entry roll (if ever enabled)
+        : normalizeTrackIndex(entryIdx + 8, trackLength);
 
     for (const peg of pegs) {
       if (peg.position.zone !== "base") continue;
 
       const to: SpotRef = { zone: "track", index: destIdx };
 
-      // Entry is blocked only by the player's own peg on the destination entry space.
       const ownBlocks = pegs.some((p) => spotsEqual(p.position, to));
       if (ownBlocks) continue;
 
@@ -217,6 +199,7 @@ export function listLegalMovesForPlayer(
         kind: "enter",
         actorPlayerId,
         pegIndex: peg.pegIndex,
+        die: steps, // ✅ added
         from: { zone: "base", playerId: actorPlayerId },
         to,
         path: [{ zone: "base", playerId: actorPlayerId }, to],
@@ -225,76 +208,40 @@ export function listLegalMovesForPlayer(
     }
   }
 
-  // ADVANCE moves
   for (const peg of pegs) {
     if (peg.position.zone === "base") continue;
-
-    // Center is not part of normal step-count movement in LMR.
     if (peg.position.zone === "center") continue;
 
     let path: SpotRef[];
 
     if (peg.position.zone === "track") {
       path = buildTrackPathFrom(peg.position.index, steps, homeEntryIdx, actorPlayerId, trackLength);
-    } else if (peg.position.zone === "home") {
+    } else {
       const start = peg.position.index;
       path = [{ ...peg.position }];
       let cur = start;
-
       for (let s = 1; s <= steps; s++) {
-        const next = (cur + 1) as 0 | 1 | 2 | 3;
-        cur = next;
+        cur = (cur + 1) as 0 | 1 | 2 | 3;
         path.push({ zone: "home", playerId: actorPlayerId, index: cur });
       }
-    } else {
-      continue;
     }
 
     const from = peg.position;
     const to = path[path.length - 1];
 
-    // Home bounds (cannot move beyond home[3])
     if (from.zone === "home" && to.zone === "home") {
       if (from.index + steps > 3) continue;
     }
 
-    // Forced-home-entry blocking check (home[0] cannot be occupied when entering)
-    let forcedHomeBlocked = false;
-    for (let i = 1; i < path.length; i++) {
-      const spot = path[i];
-      if (spot.zone === "home" && spot.index === 0) {
-        const occ = findOccupant(state, spot);
-        if (occ) {
-          forcedHomeBlocked = true;
-          break;
-        }
-      }
-    }
-    if (forcedHomeBlocked) continue;
-
-    // Own peg blocks anywhere in path (including landing)
     if (isOwnPegBlocking(state, actorPlayerId, path)) continue;
 
     const landingOcc = findOccupant(state, to);
-
-    // Can't land on own peg (already covered by own-blocking; keep as guard)
     if (landingOcc && landingOcc.playerId === actorPlayerId) continue;
-
-    // Home spaces cannot capture; must be empty to land.
     if (to.zone === "home" && landingOcc) continue;
 
     const captures: Capture[] = [];
-    if (to.zone === "track") {
-      if (landingOcc && landingOcc.playerId !== actorPlayerId) {
-        captures.push(makeCapture(landingOcc.playerId, landingOcc.pegIndex));
-      }
-    }
-
-    // Home finish gating (cannot overshoot the next finish slot)
-    if (to.zone === "home") {
-      const finishedCount = countFinishedPegs(state, actorPlayerId);
-      const target = finishTargetIndex(finishedCount);
-      if (to.index > target) continue;
+    if (to.zone === "track" && landingOcc && landingOcc.playerId !== actorPlayerId) {
+      captures.push(makeCapture(landingOcc.playerId, landingOcc.pegIndex));
     }
 
     moves.push({
@@ -302,6 +249,7 @@ export function listLegalMovesForPlayer(
       kind: "advance",
       actorPlayerId,
       pegIndex: peg.pegIndex,
+      die: steps, // ✅ added
       from,
       to,
       steps,

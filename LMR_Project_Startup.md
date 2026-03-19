@@ -46,63 +46,47 @@ Board Geometry Authority:
 
 Playpen/board_geometry/boardGeometry.ts
 
-This file contains:
-
-• BOARD_GEOMETRY calibration constants  
-• CANONICAL_ARM grid definition for the 14-spot arm module  
-• TRACK_LOOP_ORDER traversal authority  
-
-Both the sandbox renderer and gameplay renderer reference this shared
-geometry authority.
-
 ------------------------------------------------------------------------
 
 ## Last Session Accomplishments
 
-Completed during the previous session:
+Completed during this session:
 
-• Implemented M7 arrow affordance system  
+• Restored full multiplayer gameplay App.tsx (resolved file drift issues)
 
-• Built arrow indicator pipeline:
+• Completed double-dice interaction loop:
 
-  - legalMoves → getArrowIndicators → App.tsx → BoardRenderer  
+  - die selection now triggers getLegalMoves correctly  
+  - legalMoves scoped to selected die  
+  - destination highlights update per die  
+  - clicking destination sends correct move  
+  - move uses explicitly selected die  
+  - moveResult applies returned nextState to UI  
 
-• Replaced direction-based arrows with geometry-based arrows:
+• Fixed pending dice lifecycle:
 
-  - fromHole → toHole  
-  - direction derived in renderer from screen positions  
+  - no overwrite from legalMoves  
+  - full pending set preserved until move  
+  - only spent die is removed after move  
 
-• Enabled multiple arrows per peg:
+• Fixed UI → server contract issues:
 
-  - one arrow per legal move  
-  - resolves point-with-1 and center-with-1 ambiguity  
+  - die-specific requests verified end-to-end  
+  - handleMessage confirmed correct  
+  - removed reliance on stale or inferred dice  
 
-• Fixed arrow gating:
+• Verified working behavior:
 
-  - no longer dependent on awaitingDice  
-  - driven directly by legalMoveOptions  
-
-• Preserved multi-die interaction rules:
-
-  - no arrows when multiple dice exist and none selected  
-
-• Resolved renderer issues:
-
-  - fixed missing prop wiring in App.tsx  
-  - resolved data-shape mismatch (direction → from/to)  
-  - eliminated duplicate React keys  
-
-• Verified behavior:
-
-  - arrows appear only when legal moves exist  
-  - multiple arrows render correctly per peg  
-  - arrow direction matches board geometry  
-  - destination click model unchanged  
+  - roll 1,6 → both dice appear  
+  - select 1 vs 6 → different legal destinations  
+  - click destination → peg moves  
+  - only used die is consumed  
+  - remaining die persists correctly  
 
 Result:
 
-M7 arrow affordance system is operational, stable, and aligned with
-rules and board geometry.
+The full gameplay loop (roll → select die → preview → move → update)
+is now operational and stable.
 
 ------------------------------------------------------------------------
 
@@ -117,39 +101,39 @@ WebSocket
 → mapPositionToBoardHole  
 → BoardRenderer  
 
-Current graphical debug UI capabilities:
+Current graphical UI capabilities:
 
-• Connect / Disconnect  
-• Join Room / Leave Room  
-• Start Game  
-• Reset Game  
-• Roll  
-• Get Legal Moves  
-• Pending die selection (explicit)  
-• View Current Actor / Pending Dice / Banked Dice  
+• Room creation and join (multi-client verified)  
+• Lobby → Game transition  
+• Player seating and color assignment  
+• Start Game flow  
+• Roll (single and double dice)  
+• Explicit die selection  
+• Die-specific legal move requests  
+• Destination highlighting  
+• Click-to-move (destination-based)  
+• Move result state synchronization  
 
 Renderer status:
 
 • Board geometry validated for 4P / 6P / 8P  
 • Peg rendering stable  
 • Arm ownership coloring stable  
-• Base and home highlighting implemented  
-• Arrow affordance layer implemented (multi-arrow, directional)  
+• Base and home rendering correct  
+• Arrow affordance system implemented and functional  
+• Destination highlighting functional  
 
-Rules / engine validation completed:
+Rules / engine validation:
 
-• Board-size–aware track normalization  
-• Center entry behavior  
-• Center exit generation for 8-player boards  
-• Own-peg blocking on center exits  
-• Finished peg immobility in home area  
-• Multiplayer initialization and sequencing  
-• Full double-dice lifecycle with bank behavior  
+• Double-dice lifecycle verified end-to-end  
+• Die-specific legal move generation validated  
+• Move application + state propagation confirmed  
+• Partial die consumption working correctly  
 
 Milestone state:
 
 • M6 — Graphical Board UI complete  
-• M7 — Gameplay Interaction Layer in progress (arrow layer complete)  
+• M7 — Gameplay Interaction Layer in progress  
 
 ------------------------------------------------------------------------
 
@@ -159,33 +143,50 @@ Continue M7 — Gameplay Interaction Layer.
 
 Objective:
 
-Refine and complete the gameplay interaction experience now that the
-arrow affordance system is operational.
+Refine interaction clarity now that the full gameplay loop is working.
 
-Immediate next task (choose one direction):
+Immediate next task (RECOMMENDED):
 
-Option A — Arrow Visual Refinement  
-• Improve spacing when multiple arrows originate from same peg  
-• Adjust arrow length / thickness for readability  
-• Add subtle fade or layering rules to reduce clutter  
+### Destination Highlight Visibility & Clarity
 
-Option B — Destination Highlight Alignment  
-• Ensure destination highlights and arrows are visually coordinated  
-• Validate that all arrow endpoints correspond to clickable targets  
-• Improve clarity in dense move scenarios  
+Accomplishes:
+• Makes legal move targets unmistakably visible  
+• Reduces reliance on debug panel  
+• Aligns visual affordance with interaction model  
 
-Option C — Interaction Feedback Polish  
-• Add hover or focus feedback tied to arrows and pegs  
-• Improve clarity of selected die state on board  
-• Reduce reliance on debug panel for understanding state  
+Impact:
+• Directly improves usability of current working system  
+• No changes to rules or engine  
+
+Pros:
+• Low risk  
+• High clarity gain  
+• Builds on working pipeline  
+
+Cons:
+• Requires tuning visual styling in BoardRenderer  
+
+---
+
+Secondary options:
+
+### Option B — Arrow + Highlight Alignment
+
+• Ensure arrows clearly point to highlighted destinations  
+• Improve consistency between indicators  
+
+### Option C — Turn / Active Player Visual Clarity
+
+• Stronger indication of whose turn it is  
+• Tie color + UI messaging together  
+
+---
 
 Constraint:
 
-• Do not change rules authority or move generation  
-• Do not introduce clickable arrows  
-• Maintain strict multi-die gating model  
-
-Next session should begin by selecting one refinement path and executing
-a single focused improvement.
+• Do not change rules authority  
+• Do not change move generation  
+• Maintain destination-click model  
+• Maintain explicit die selection requirement  
 
 ------------------------------------------------------------------------
