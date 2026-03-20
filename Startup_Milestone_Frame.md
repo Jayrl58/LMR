@@ -364,3 +364,57 @@ Result:
   rather than restoration of core move authority
 
 ------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+### M7 VALIDATION RECORD — 2026-03-20  
+(Peg-First Interaction, Crosshair Destinations, Turn Sync)
+
+Objective:
+
+Stabilize the gameplay interaction model to be peg-first, prevent
+destination-first moves, standardize destination highlighting with
+crosshairs across all zones, and verify multiplayer turn progression.
+
+Issues observed:
+
+• Destination clicks could execute moves without selecting a peg  
+• Highlighting on home spots diverged from track/point styling  
+• Client did not honor server `nextActorId` after moveResult  
+• Multi-client sessions appeared out of sync in turn ownership  
+
+Root cause:
+
+• Missing gating between selectedPeg and destination execution  
+• Inconsistent highlight rendering paths for special zones  
+• Client turn parsing ignored `nextActorId` field  
+• Multiple browser windows reused the same client identity  
+
+Resolution:
+
+• Enforced peg-first gating: destination clicks ignored unless a peg is selected  
+• Added crosshair overlay for all destination types (track, point, 1-spot, home)  
+• Preserved underlying rings for special spaces; crosshair draws above  
+• Implemented turn normalization using `nextActorId` on moveResult  
+• Validated unique client identities using separate browser profiles  
+
+Validated behavior:
+
+• Peg must be selected before any destination is actionable  
+• Selecting a peg filters destinations correctly for that peg  
+• Crosshair highlights render consistently on all destination zones  
+• Move execution updates board state immediately  
+• Turn advances correctly across p0 → p1 → p2 → p3 → p0 in 4-client session  
+
+Result:
+
+• Peg-first interaction model is now deterministic and user-safe  
+• Destination highlighting is visually consistent and clear  
+• Multiplayer turn synchronization is correct  
+• M7 is now in refinement phase; remaining work is UI improvements  
+
+Notes:
+
+• Dynamic per-die roll input work was attempted but is unstable and
+  intentionally deferred; restart from last-known-good App.tsx in next session.
+

@@ -192,3 +192,77 @@ Always isolate:
 with strict separation between preview data and authoritative state."
 
 ------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+## 2026-03-20 --- UI Iteration Control & Replacement Discipline
+
+### What went well
+
+• **Fast visual validation loop** (refresh + immediate UI inspection) caught regressions quickly
+
+• **Using real multiplayer sessions early** exposed identity and turn-sync issues that would not appear in single-client testing
+
+• **Explicit user constraints** (no patching, full-file replacements, one step at a time) helped keep scope bounded when followed
+
+### What did not work well
+
+• **Full-file replacement discipline broke down**
+
+→ Some responses attempted patch-style guidance  
+→ Some replacements were generated against stale or incorrect baselines  
+→ Result: blank screens and regressions
+
+• **Baseline drift during active iteration**
+
+→ Dynamic roll-input work started without locking a known-good App.tsx  
+→ Subsequent fixes stacked on unstable state  
+→ Made it unclear whether issues were new or inherited
+
+• **Multiple concerns modified in one pass**
+
+→ Input model + state sync + rendering touched together  
+→ Violated single-change rule  
+→ Slowed root-cause isolation
+
+• **Incorrect source-of-truth assumptions**
+
+→ UI attempted to infer dice count from config and pending state inconsistently  
+→ Highlighted need to explicitly define authoritative source before UI changes
+
+### Process corrections
+
+• **Hard lock baseline before UI refactor**
+
+→ Save and label last-known-good file  
+→ Do not proceed without confirmed rollback point
+
+• **Enforce “replacement-only, from-current-file” rule**
+
+→ Always generate replacements from the exact file provided in the same turn  
+→ No inferred or reconstructed files
+
+• **Single-variable change per iteration**
+
+→ UI layout change OR state change OR data source change — never combined
+
+• **Define source of truth before wiring UI**
+
+→ For any dynamic UI (dice, moves, turns), explicitly state:
+  - where data comes from
+  - when it is valid
+  - when it is empty
+
+• **Abort early on instability**
+
+→ If UI regresses (blank screen / core interaction broken):
+  - stop forward work immediately  
+  - revert to baseline  
+  - re-scope smaller
+
+### Outcome
+
+• Reinforced need for strict baseline control during UI work  
+• Confirmed that full-file replacement workflow must be followed exactly to avoid drift  
+• Identified dynamic UI work (like roll inputs) as requiring tighter scoping and clearer data contracts before implementation
+

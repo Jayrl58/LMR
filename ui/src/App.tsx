@@ -275,6 +275,52 @@ function parseMove(option: LegalMoveOption): ParsedMove | null {
   }
 }
 
+
+function getMovePegId(move: ParsedMove): string | null {
+  const playerId =
+    typeof move.playerId === "string"
+      ? move.playerId
+      : typeof move.actorPlayerId === "string"
+        ? move.actorPlayerId
+        : typeof move.ownerPlayerId === "string"
+          ? move.ownerPlayerId
+          : null;
+
+  const pegIndex =
+    typeof move.pegIndex === "number" && Number.isInteger(move.pegIndex)
+      ? move.pegIndex
+      : null;
+
+  if (!playerId || pegIndex === null) return null;
+  return `${playerId}-${pegIndex}`;
+}
+
+function getMovablePegIds(
+  legalMoveOptions: LegalMoveOption[],
+  selectedDie: string
+): string[] {
+  if (!selectedDie) return [];
+
+  const selectedDieValue = Number(selectedDie);
+  if (!Number.isInteger(selectedDieValue)) return [];
+
+  const ids = new Set<string>();
+
+  legalMoveOptions.forEach((option) => {
+    if (option.dice.length > 0 && !option.dice.includes(selectedDieValue)) return;
+
+    const move = parseMove(option);
+    if (!move) return;
+
+    const pegId = getMovePegId(move);
+    if (!pegId) return;
+
+    ids.add(pegId);
+  });
+
+  return Array.from(ids);
+}
+
 function getMoveTargetPosition(move: ParsedMove): unknown {
   return move.to ?? move.destination ?? move.target ?? move.end ?? move.toPosition ?? null;
 }
@@ -357,6 +403,7 @@ function holesEqual(a: BoardHolePlacement, b: BoardHolePlacement): boolean {
 function buildDestinationHighlights(
   legalMoveOptions: LegalMoveOption[],
   selectedDie: string,
+  selectedPegId: string | null,
   fallbackPlayerId: string,
   boardArms: SupportedArms
 ): DestinationHighlight[] {
@@ -368,8 +415,13 @@ function buildDestinationHighlights(
   const byKey = new Map<string, DestinationHighlight>();
 
   legalMoveOptions.forEach((option) => {
+    if (option.dice.length > 0 && !option.dice.includes(selectedDieValue)) return;
+
     const move = parseMove(option);
     if (!move) return;
+
+    const pegId = getMovePegId(move);
+    if (selectedPegId && pegId !== selectedPegId) return;
 
     const actorPlayerId = getMoveActorPlayerId(move, fallbackPlayerId);
     const destinationPosition = getMoveTargetPosition(move);
@@ -395,6 +447,7 @@ function buildDestinationHighlights(
 function findMoveForDestination(
   legalMoveOptions: LegalMoveOption[],
   selectedDie: string,
+  selectedPegId: string | null,
   clickedHole: BoardHolePlacement,
   fallbackPlayerId: string,
   boardArms: SupportedArms
@@ -405,8 +458,13 @@ function findMoveForDestination(
   if (!Number.isInteger(selectedDieValue)) return null;
 
   for (const option of legalMoveOptions) {
+    if (option.dice.length > 0 && !option.dice.includes(selectedDieValue)) continue;
+
     const move = parseMove(option);
     if (!move) continue;
+
+    const pegId = getMovePegId(move);
+    if (selectedPegId && pegId !== selectedPegId) continue;
 
     const actorPlayerId = getMoveActorPlayerId(move, fallbackPlayerId);
     const destinationPosition = getMoveTargetPosition(move);
@@ -629,11 +687,15 @@ function GameView(props: {
   pendingDice: PendingDieView[];
   legalMoveOptions: LegalMoveOption[];
   destinationHighlights: DestinationHighlight[];
+  movablePegIds: string[];
+  selectedPegId: string | null;
   firstLegalMoveRaw: string;
   onRollInputChange: (value: string) => void;
   onRoll: () => void;
   onSelectDie: (value: string) => void;
+  onPegClick: (pegId: string) => void;
   onDestinationClick: (hole: BoardHolePlacement) => void;
+  onBackgroundClick: () => void;
 }) {
   const {
     connected,
@@ -648,11 +710,15 @@ function GameView(props: {
     pendingDice,
     legalMoveOptions,
     destinationHighlights,
+    movablePegIds,
+    selectedPegId,
     firstLegalMoveRaw,
     onRollInputChange,
     onRoll,
     onSelectDie,
+    onPegClick,
     onDestinationClick,
+    onBackgroundClick,
   } = props;
 
   const uiState = useMemo(() => mapGameStateToUI(gameState), [gameState]);
@@ -762,7 +828,7 @@ function GameView(props: {
         </div>
 
         <div style={{ marginBottom: "6px" }}>
-          <b>Destination Highlights:</b> {destinationHighlights.length} (debug no-die-filter)
+          <b>Destination Highlights:</b> {destinationHighlights.length}
         </div>
 
         <div style={{ marginBottom: "6px" }}>
@@ -788,10 +854,14 @@ function GameView(props: {
       <BoardRenderer
         arms={arms}
         pegPlacements={pegPlacements}
+        movablePegIds={movablePegIds}
+        focusedPegId={selectedPegId ?? ""}
         armColors={armColors}
         arrowIndicators={[]}
         destinationHighlights={destinationHighlights}
+        onPegClick={onPegClick}
         onDestinationClick={onDestinationClick}
+        onBackgroundClick={onBackgroundClick}
       />
     </div>
   );
@@ -813,6 +883,7 @@ export default function App() {
   const [pendingDice, setPendingDice] = useState<PendingDieView[]>([]);
   const [legalMoveOptions, setLegalMoveOptions] = useState<LegalMoveOption[]>([]);
   const [rawLegalMoves, setRawLegalMoves] = useState<RawLegalMove[]>([]);
+  const [selectedPegId, setSelectedPegId] = useState<string | null>(null);
   const [latestMessageType, setLatestMessageType] = useState("");
   const [latestStatusText, setLatestStatusText] = useState("");
 
@@ -866,6 +937,8 @@ export default function App() {
           setLegalMoveOptions([]);
           setRawLegalMoves([]);
           setSelectedDie("");
+          setSelectedPegId(null);
+          setSelectedPegId(null);
         }
         setLatestStatusText("Game state synchronized");
       }
@@ -958,7 +1031,27 @@ export default function App() {
 
   useEffect(() => {
     if (pendingDice.length === 1) {
-      setSelectedDie(String(pendingDice[0].value));
+      const onlyDie = String(pendingDice[0].value);
+
+      if (selectedDie !== onlyDie) {
+        setSelectedDie(onlyDie);
+        setSelectedPegId(null);
+
+        if (gameState) {
+          const currentTurnPlayerId = getCurrentTurnPlayerId(gameState);
+          if (currentTurnPlayerId && currentTurnPlayerId === playerId) {
+            const parsedDie = Number(onlyDie);
+            if (Number.isInteger(parsedDie)) {
+              sendMessage(wsRef.current, {
+                type: "getLegalMoves",
+                actorId: currentTurnPlayerId,
+                die: parsedDie,
+              });
+            }
+          }
+        }
+      }
+
       return;
     }
 
@@ -966,10 +1059,11 @@ export default function App() {
     if (!stillValid) {
       setSelectedDie("");
     }
-  }, [pendingDice, selectedDie]);
+  }, [pendingDice, selectedDie, gameState, playerId]);
 
   const handleSelectDie = (dieValue: string) => {
     setSelectedDie(dieValue);
+    setSelectedPegId(null);
 
     if (!gameState) return;
 
@@ -997,6 +1091,8 @@ export default function App() {
     setLegalMoveOptions([]);
     setRawLegalMoves([]);
     setSelectedDie("");
+    setSelectedPegId(null);
+    setSelectedPegId(null);
     setStoredRoomCode("");
     sendMessage(wsRef.current, { type: "joinRoom" });
   };
@@ -1082,16 +1178,30 @@ export default function App() {
     });
   };
 
+  const movablePegIds = useMemo(
+    () => getMovablePegIds(legalMoveOptions, selectedDie),
+    [legalMoveOptions, selectedDie]
+  );
+
   const destinationHighlights = useMemo(() => {
     if (!gameState) return [];
     const fallbackPlayerId = playerId || getCurrentTurnPlayerId(gameState);
     return buildDestinationHighlights(
       legalMoveOptions,
       selectedDie,
+      selectedPegId,
       fallbackPlayerId,
       normalizeArms(gameState.config.playerCount)
     );
-  }, [gameState, legalMoveOptions, selectedDie, playerId]);
+  }, [gameState, legalMoveOptions, selectedDie, selectedPegId, playerId]);
+
+  const handlePegClick = (pegId: string) => {
+    setSelectedPegId((current) => (current === pegId ? null : pegId));
+  };
+
+  const handleBackgroundClick = () => {
+    setSelectedPegId(null);
+  };
 
   const handleDestinationClick = (hole: BoardHolePlacement) => {
     if (!gameState) return;
@@ -1099,16 +1209,27 @@ export default function App() {
     const currentTurnPlayerId = getCurrentTurnPlayerId(gameState);
     if (!currentTurnPlayerId || currentTurnPlayerId !== playerId) return;
 
+    if (pendingDice.length > 1 && !selectedDie) {
+      setLatestStatusText("Select a die first");
+      return;
+    }
+
+    if (!selectedPegId) {
+      setLatestStatusText("Select a peg first");
+      return;
+    }
+
     const chosen = findMoveForDestination(
       legalMoveOptions,
       selectedDie,
+      selectedPegId,
       hole,
       playerId || currentTurnPlayerId,
       normalizeArms(gameState.config.playerCount)
     );
 
     if (!chosen) {
-      setLatestStatusText("Clicked hole is not a legal destination for selected die");
+      setLatestStatusText("Clicked hole is not a legal destination for the selected peg");
       return;
     }
 
@@ -1124,6 +1245,7 @@ export default function App() {
       dice: [Number(selectedDie)],
       move: parsedMove,
     });
+    setSelectedPegId(null);
   };
 
   const firstLegalMoveRaw = useMemo(() => {
@@ -1150,11 +1272,15 @@ export default function App() {
         pendingDice={pendingDice}
         legalMoveOptions={legalMoveOptions}
         destinationHighlights={destinationHighlights}
+        movablePegIds={movablePegIds}
+        selectedPegId={selectedPegId}
         firstLegalMoveRaw={firstLegalMoveRaw}
         onRollInputChange={setRollInput}
         onRoll={handleRoll}
         onSelectDie={handleSelectDie}
+        onPegClick={handlePegClick}
         onDestinationClick={handleDestinationClick}
+        onBackgroundClick={handleBackgroundClick}
       />
     );
   }

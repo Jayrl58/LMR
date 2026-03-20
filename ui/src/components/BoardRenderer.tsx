@@ -403,16 +403,12 @@ export default function BoardRenderer({
         const position = getScreenPositionForHole(highlight.hole, spots, baseSpots);
         if (!position) return null;
 
-        const isHomeDestination = highlight.hole.type === "home";
-        const baseColor = highlight.color ?? DEFAULT_DESTINATION_COLOR;
-
         return {
           key: `${index}-${JSON.stringify(highlight.hole)}`,
           hole: highlight.hole,
           screenX: position.x,
           screenY: position.y,
-          color: baseColor,
-          isHomeDestination,
+          color: highlight.color ?? DEFAULT_DESTINATION_COLOR,
         };
       })
       .filter(
@@ -424,7 +420,6 @@ export default function BoardRenderer({
           screenX: number;
           screenY: number;
           color: string;
-          isHomeDestination: boolean;
         } => highlight !== null
       );
   }, [destinationHighlights, spots, baseSpots]);
@@ -447,18 +442,18 @@ export default function BoardRenderer({
   }, [previewPegPlacement, spots, baseSpots]);
 
   const pegRadius = Math.max(
-    geometry.holeRadius - 2.5,
-    geometry.holeRadius * 0.68
+    geometry.holeRadius - 0.8,
+    geometry.holeRadius * 0.9
   );
 
   const focusedRingRadius = pegRadius + 9;
   const finishedGoldRingRadius = pegRadius + 3;
   const finishedOuterRingRadius = pegRadius + 8;
-  const destinationRingRadius = geometry.holeRadius + 5;
-  const homeDestinationInnerRingRadius = geometry.holeRadius + 4;
-  const homeDestinationOuterRingRadius = geometry.holeRadius + 8;
-  const destinationClickRadius = geometry.holeRadius + 10;
-  const previewPegRadius = pegRadius - 1;
+  const destinationClickRadius = geometry.holeRadius + 12;
+  const destinationCrosshairInnerRadius = geometry.holeRadius + 8;
+  const destinationCrosshairOuterRadius = geometry.holeRadius * 2.5;
+  const destinationCrosshairStrokeWidth = 2.8;
+  const previewPegRadius = Math.max(pegRadius - 1, geometry.holeRadius * 0.82);
   const specialTrackRingRadius = geometry.holeRadius * 2.05;
   const homeRingRadius = geometry.holeRadius * 2.0;
   const baseRingRadius = geometry.holeRadius * 2.0;
@@ -656,58 +651,50 @@ export default function BoardRenderer({
             onMouseEnter={() => onDestinationHover?.(highlight.hole)}
             onMouseLeave={() => onDestinationLeave?.()}
           />
-          <circle
-            cx={highlight.screenX}
-            cy={highlight.screenY}
-            r={geometry.holeRadius}
-            fill="transparent"
-            stroke="none"
-            style={{
-              cursor:
-                onDestinationClick || onDestinationHover ? "pointer" : "default",
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onDestinationClick?.(highlight.hole);
-            }}
-            onMouseEnter={() => onDestinationHover?.(highlight.hole)}
-            onMouseLeave={() => onDestinationLeave?.()}
+          <line
+            x1={highlight.screenX}
+            y1={highlight.screenY - destinationCrosshairOuterRadius}
+            x2={highlight.screenX}
+            y2={highlight.screenY - destinationCrosshairInnerRadius}
+            stroke="#000000"
+            strokeWidth={destinationCrosshairStrokeWidth}
+            strokeLinecap="round"
+            opacity="0.96"
+            style={{ pointerEvents: "none" }}
           />
-          {highlight.isHomeDestination ? (
-            <>
-              <circle
-                cx={highlight.screenX}
-                cy={highlight.screenY}
-                r={homeDestinationOuterRingRadius}
-                fill="none"
-                stroke={highlight.color}
-                strokeWidth="3.6"
-                opacity="0.98"
-                style={{ pointerEvents: "none" }}
-              />
-              <circle
-                cx={highlight.screenX}
-                cy={highlight.screenY}
-                r={homeDestinationInnerRingRadius}
-                fill="none"
-                stroke={highlight.color}
-                strokeWidth="2.2"
-                opacity="0.72"
-                style={{ pointerEvents: "none" }}
-              />
-            </>
-          ) : (
-            <circle
-              cx={highlight.screenX}
-              cy={highlight.screenY}
-              r={destinationRingRadius}
-              fill="none"
-              stroke={highlight.color}
-              strokeWidth="3"
-              opacity="0.95"
-              style={{ pointerEvents: "none" }}
-            />
-          )}
+          <line
+            x1={highlight.screenX}
+            y1={highlight.screenY + destinationCrosshairInnerRadius}
+            x2={highlight.screenX}
+            y2={highlight.screenY + destinationCrosshairOuterRadius}
+            stroke="#000000"
+            strokeWidth={destinationCrosshairStrokeWidth}
+            strokeLinecap="round"
+            opacity="0.96"
+            style={{ pointerEvents: "none" }}
+          />
+          <line
+            x1={highlight.screenX - destinationCrosshairOuterRadius}
+            y1={highlight.screenY}
+            x2={highlight.screenX - destinationCrosshairInnerRadius}
+            y2={highlight.screenY}
+            stroke="#000000"
+            strokeWidth={destinationCrosshairStrokeWidth}
+            strokeLinecap="round"
+            opacity="0.96"
+            style={{ pointerEvents: "none" }}
+          />
+          <line
+            x1={highlight.screenX + destinationCrosshairInnerRadius}
+            y1={highlight.screenY}
+            x2={highlight.screenX + destinationCrosshairOuterRadius}
+            y2={highlight.screenY}
+            stroke="#000000"
+            strokeWidth={destinationCrosshairStrokeWidth}
+            strokeLinecap="round"
+            opacity="0.96"
+            style={{ pointerEvents: "none" }}
+          />
         </g>
       ))}
 
