@@ -282,3 +282,77 @@ with strict separation between preview data and authoritative state."
 "Fix the layer that owns the truth, not the layer that exposes the symptom."
 
 ------------------------------------------------------------------------
+
+
+------------------------------------------------------------------------
+
+## 2026-03-22 --- Contract Alignment vs UI Drift
+
+### What went well
+
+• Forced return to **server as source-of-truth** broke UI debugging loop  
+• Targeted single-message capture eliminated noise and guesswork  
+• Shift from behavior debugging → code-path reasoning exposed root cause quickly  
+• Once layer ownership was identified, fixes remained stable  
+
+------------------------------------------------------------------------
+
+### What did not work well
+
+• **WebSocket message ambiguity**
+→ wrong frames repeatedly analyzed (old roll vs current stateSync)
+
+• **UI-first instinct persisted too long**
+→ delayed correct server-side diagnosis  
+
+• **File baseline drift**
+→ replacements generated from non-current files reintroduced bugs  
+
+• **Missing early state validation step**
+→ no explicit “verify server payload first” gate  
+
+------------------------------------------------------------------------
+
+### Process corrections
+
+• Add **State Authority Check (mandatory)**
+
+1) Capture one authoritative server message  
+2) Validate:
+   - pendingDice  
+   - bankedDice  
+   - awaitingDice  
+3) Only proceed to UI if server state is correct  
+
+• Enforce **Single-Message Validation Rule**
+→ always capture “immediately after X event”  
+→ reject historical/ambiguous frames  
+
+• Lock **live file before replacement**
+→ always generate from current on-disk file  
+
+• Detect loop condition early
+→ if same symptom persists after 2–3 iterations:
+   - stop
+   - switch to code-path audit or server validation  
+
+• Separate bug types strictly:
+→ Interaction bug = UI  
+→ State bug = server  
+→ never fix both simultaneously  
+
+------------------------------------------------------------------------
+
+### Outcome
+
+• Established reliable debugging pattern:
+
+Server message → validate state → then UI  
+
+• Eliminated speculative iteration loops  
+
+• Reinforced rule:
+
+"UI must never be debugged before validating server state."
+
+------------------------------------------------------------------------

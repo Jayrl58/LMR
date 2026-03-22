@@ -48,55 +48,35 @@ Playpen/board_geometry/boardGeometry.ts
 
 ---
 
-## Last Session Accomplishments
+## Last Session Accomplishments (2026-03-22)
 
-Completed during this session:
+• Identified and fixed **server-side multi-die zero-move bug**
+  - Removed incorrect auto-pass behavior in handleMessage.ts
+  - Ensured pendingDice persist until explicitly resolved
 
-• Re-established a known-good App.tsx baseline after multiple unstable iterations
+• Stabilized **die selection → legalMoves request path**
+  - Bound die click directly to getLegalMoves
+  - Eliminated reliance on effect-based dispatch
 
-• Isolated and confirmed that the UI is NOT the root cause of the current issue
+• Implemented **auto-select + auto-request for final die**
+  - When one die remains, legal moves now display automatically
 
-• Identified the actual failure source:
+• Fixed **turn ownership desynchronization**
+  - Merged authoritative turn envelope into UI gameState
+  - Ensured nextActorId is the single source of truth
 
-SERVER TURN CONTRACT INCONSISTENCY
+• Validated full gameplay loop across multiple players:
+  - roll → select die → move → consume die → chain rolls → turn advance
 
-* turn envelope sometimes missing:
-  • pendingDice
-  • bankedDice
-  • awaitingDice
-
-* UI behavior depends on all three being present and consistent
-
-• Confirmed failure pattern:
-
-* expectedRollCount = 2
-* pendingDice = []
-* bankedDice = 0
-* awaitingDice inconsistent or missing
-
-→ leads to:
-• disappearing dice
-• incorrect move targeting
-• UI desynchronization
-• “round and round” debugging loop
-
-• Verified that UI fallback logic (effectivePendingDice, expectedRollCount overrides) is compensating for server inconsistency, not causing the issue
-
-• Attempted server-side contract enforcement (computeTurn / enrichServerMessage), but:
-
-* replacement broke server wiring due to incomplete file context
-* confirmed need for controlled, in-place modification instead of full overwrite
-
-• Confirmed server runtime still launches correctly after restoration:
-
-WS server running on port 8787
-HTTP console running on port 8788
+• Confirmed correct behavior for:
+  - pendingDice lifecycle
+  - banked dice accumulation and consumption
+  - expectedRollCount transitions
+  - cross-client turn synchronization
 
 Result:
 
-The system is **functionally working**, but unstable due to inconsistent server turn envelopes.
-
-The root cause is now **clearly identified and localized to wsServer turn construction**.
+The gameplay loop is now **functionally stable and deterministic**.
 
 ---
 
@@ -104,111 +84,104 @@ The root cause is now **clearly identified and localized to wsServer turn constr
 
 Stable baseline (must be preserved):
 
-• App.tsx restored to last known-good checkpoint version 
-• wsServer.ts restored to working repository version
-• Multiplayer gameplay loop operational:
+• App.tsx (latest merged version with:
+  - turn-envelope merge
+  - direct die selection requests
+  - auto-select final die behavior)
 
-join → start → roll → select die → select peg → select destination → move → turn advance
+• handleMessage.ts (zero-move fix applied)
 
-Current issue:
+• wsServer.ts unchanged and functioning correctly
 
-• Turn envelope emitted by server is not consistently complete
+System status:
 
-Required invariant (NOT currently guaranteed):
-
-turn: {
-pendingDice: []
-bankedDice: number
-awaitingDice: boolean
-}
-
-Impact of violation:
-
-• UI forced into fallback reconstruction logic
-• Dice state becomes ambiguous
-• Legal move targeting becomes unreliable
+• Multiplayer gameplay loop working end-to-end
+• Server/UI contract aligned
+• No fallback UI reconstruction required
 
 ---
 
 ## Next Action
 
-### PRIORITY: Fix Server Turn Contract (wsServer.ts)
+### PRIORITY: M7 Refinement Completion
 
 Objective:
 
-Enforce a **complete, deterministic turn envelope** in all outbound messages.
+Complete remaining interaction-layer refinements and prepare for M7 completion lock.
 
 ---
 
-### Task: Normalize turn construction
+### Task Options
+
+Option A — Interaction polish (recommended)
 
 Accomplishes:
-• Guarantees all turn fields always exist
-• Eliminates UI ambiguity
-• Stabilizes entire turn lifecycle
+• Improve UX clarity and responsiveness
+• Reduce cognitive load during move selection
 
 Impact:
-• Server-side change only
-• No UI changes required
-• Removes need for fallback logic in App.tsx
+• UI-only refinements
+• No server changes required
 
 Pros:
-• Fixes root cause
-• Aligns with authoritative server model
-• Prevents further UI churn
+• Safe
+• Visible improvement
+• Builds on stable foundation
 
 Cons:
-• Must be done carefully inside existing server file
-• Cannot overwrite server file without preserving wiring
+• Does not advance milestone boundary directly
 
 ---
 
-### Implementation Constraints
+Option B — M7 Completion Lock
 
-• DO NOT replace entire wsServer.ts blindly
-• Modify only turn construction logic
-• Preserve:
+Accomplishes:
+• Declare M7 complete
+• Transition to M8 planning
 
-* handleClientMessage integration
-* room/session lifecycle
-* connection handling
+Impact:
+• Formal milestone transition
 
-• Ensure every outbound message includes:
+Pros:
+• Moves project forward structurally
 
-turn.pendingDice
-turn.bankedDice
-turn.awaitingDice
+Cons:
+• May skip minor polish opportunities
 
 ---
 
-### Restart Instruction (CRITICAL)
+### Recommendation
+
+Option A — perform light refinement pass, then lock M7.
+
+---
+
+## Restart Instruction (CRITICAL)
 
 At next session start:
 
 1. Confirm baseline:
 
-   * App.tsx = checkpoint version
-   * wsServer.ts = repository working version
+   • App.tsx = latest merged version (turn-envelope fix included)
+   • handleMessage.ts = zero-move fix version
+   • wsServer.ts = unchanged working version
 
-2. Do NOT modify UI
+2. Start with:
+   → M7 refinement OR completion decision
 
-3. Begin directly with:
-   → server turn contract normalization
-
----
-
-### Explicit Stop Condition
-
-Do NOT return to UI changes until:
-
-• pendingDice
-• bankedDice
-• awaitingDice
-
-are confirmed stable and consistent across:
-
-* stateSync
-* legalMoves
-* moveResult
+3. Do NOT revisit:
+   • turn envelope bugs
+   • multi-die lifecycle bugs
+   unless regression is observed
 
 ---
+
+## Explicit Stop Condition
+
+Do NOT modify server or UI core logic unless:
+
+• pendingDice disappears incorrectly  
+• bankedDice miscalculates  
+• turn ownership desync reappears  
+
+Otherwise proceed forward to refinement and milestone completion.

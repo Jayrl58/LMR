@@ -467,17 +467,23 @@ function computeLobby(room: Room): LobbyState {
 }
 
 function computeTurn(room: Room): TurnInfo {
-  const turn = { ...(room.session.turn as any) };
-  if (Array.isArray((room.session as any).pendingDice)) {
-    turn.pendingDice = (room.session as any).pendingDice;
-  }
-  if (
-    typeof (room.session as any).bankedDice === "number" &&
-    Number.isInteger((room.session as any).bankedDice) &&
-    (room.session as any).bankedDice > 0
-  ) {
-    turn.bankedDice = (room.session as any).bankedDice;
-  }
+  const s = room.session as any;
+  const turn = { ...((room.session.turn as any) ?? {}) };
+
+  turn.pendingDice = Array.isArray(s.pendingDice)
+    ? s.pendingDice.map((d: any) => d?.value ?? d)
+    : Array.isArray(turn.pendingDice)
+      ? turn.pendingDice
+      : [];
+
+  turn.bankedDice = Number.isInteger(s.bankedDice)
+    ? s.bankedDice
+    : Number.isInteger(turn.bankedDice)
+      ? turn.bankedDice
+      : 0;
+
+  turn.awaitingDice = turn.awaitingDice === true;
+
   return turn as TurnInfo;
 }
 
@@ -1044,9 +1050,22 @@ if (msg.type === "setReady") {
         }
       }
 
+
       const result = handleClientMessage(roomCode, room.session, msg as any);
 
       room.session = result.nextState;
+
+      {
+        const s = room.session as any;
+        const t = ((room.session.turn as any) ??= {});
+
+        t.pendingDice = Array.isArray(s.pendingDice)
+          ? s.pendingDice.map((d: any) => d?.value ?? d)
+          : [];
+        t.bankedDice = Number.isInteger(s.bankedDice) ? s.bankedDice : 0;
+        t.awaitingDice = t.awaitingDice === true;
+      }
+
       persist(room);
 
       send(ws, result.serverMessage);

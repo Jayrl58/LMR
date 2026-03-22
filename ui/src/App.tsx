@@ -178,10 +178,22 @@ function parseLobbyState(value: unknown): LobbyViewState | null {
 function getCurrentTurnPlayerId(gameState: GameState): string {
   const turn = gameState.turn as unknown;
   if (!isObject(turn)) return "";
+  if (typeof turn.nextActorId === "string") return turn.nextActorId;
   if (typeof turn.currentPlayerId === "string") return turn.currentPlayerId;
   if (typeof turn.playerId === "string") return turn.playerId;
   if (typeof turn.actorId === "string") return turn.actorId;
   return "";
+}
+
+function mergeTurnIntoGameState(gameState: GameState, turnOverride: unknown): GameState {
+  if (!isObject(turnOverride)) return gameState;
+  return {
+    ...gameState,
+    turn: {
+      ...(isObject(gameState.turn) ? gameState.turn : {}),
+      ...turnOverride,
+    },
+  };
 }
 
 function parsePendingDiceFromTurn(turnValue: unknown): PendingDieView[] {
@@ -983,9 +995,10 @@ export default function App() {
         const parsedState = parseJsonIfString(message.state);
         if (isGameState(parsedState)) {
           const turnEnvelope = isObject(message.turn) ? message.turn : (parsedState.turn as unknown);
+          const mergedState = mergeTurnIntoGameState(parsedState, turnEnvelope);
 
-          setGameState(parsedState);
-          setPhase(parsedState.phase);
+          setGameState(mergedState);
+          setPhase(mergedState.phase);
           setPendingDice(parsePendingDiceFromTurn(turnEnvelope));
           setBankedDice(parseBankedDice(turnEnvelope));
           setLegalMoveOptions([]);
@@ -997,7 +1010,7 @@ export default function App() {
           const nextExpectedRollCount =
             typeof message.expectedRollCount === "number" && Number.isInteger(message.expectedRollCount)
               ? message.expectedRollCount
-              : computeExpectedRollCountForUi(parsedState, turnEnvelope);
+              : computeExpectedRollCountForUi(mergedState, turnEnvelope);
           setExpectedRollCount(nextExpectedRollCount);
           setRollValues((current) => resizeRollValues(current, nextExpectedRollCount));
         } else {
@@ -1062,10 +1075,11 @@ export default function App() {
         const nextStateCandidate = response?.result?.nextState ?? response?.nextState ?? null;
 
         if (isGameState(nextStateCandidate)) {
-          setGameState(nextStateCandidate);
-          setPhase(nextStateCandidate.phase);
-
           const nextTurn = response?.turn ?? response?.result?.turn ?? null;
+          const mergedState = mergeTurnIntoGameState(nextStateCandidate, nextTurn);
+
+          setGameState(mergedState);
+          setPhase(mergedState.phase);
 
           if (nextTurn && typeof nextTurn === "object" && Array.isArray((nextTurn as any).pendingDice)) {
             setBankedDice(parseBankedDice(nextTurn));
@@ -1087,11 +1101,11 @@ export default function App() {
                 .filter(Boolean) as PendingDieView[]
             );
           } else {
-            setPendingDice(parsePendingDice(nextStateCandidate));
-            setBankedDice(parseBankedDice(nextStateCandidate.turn as unknown));
+            setPendingDice(parsePendingDice(mergedState));
+            setBankedDice(parseBankedDice(mergedState.turn as unknown));
           }
 
-          const nextExpectedRollCount = computeExpectedRollCountForUi(nextStateCandidate, nextTurn);
+          const nextExpectedRollCount = computeExpectedRollCountForUi(mergedState, nextTurn);
           setExpectedRollCount(nextExpectedRollCount);
           setRollValues((current) => resizeRollValues(current, nextExpectedRollCount));
 

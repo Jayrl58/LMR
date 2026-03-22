@@ -56,10 +56,11 @@ function buildTurnForMessage(s: SessionState, turnOverride?: TurnInfo): any {
   // TurnInfo is intentionally minimal in protocol.ts; we attach extra fields
   // (pendingDice, bankedDice) as a runtime-compatible extension used by tests and debug UIs.
   const turnForMsg: any = { ...(turnOverride ?? s.turn) };
-  if (Array.isArray(s.pendingDice)) turnForMsg.pendingDice = s.pendingDice;
-  if (typeof s.bankedDice === "number" && s.bankedDice > 0) {
-    turnForMsg.bankedDice = s.bankedDice;
-  }
+
+  turnForMsg.pendingDice = Array.isArray(s.pendingDice) ? s.pendingDice : [];
+  turnForMsg.bankedDice = Number.isInteger(s.bankedDice) ? s.bankedDice : 0;
+  turnForMsg.awaitingDice = turnForMsg.awaitingDice === true;
+
   return turnForMsg;
 }
 
@@ -392,53 +393,23 @@ export function handleClientMessage(
       // Non-team play: roller controls the dice immediately (backward compatible behavior).
       const moves = legalMoves(state.game as any, rollerId as any, dice as any) as any[];
 
-      // No-move contract (external dice):
-      // - Always emit legalMoves (even if empty) after a roll.
-      // - Require explicit client acknowledgement via forfeitPendingDie to forfeit/pass when empty.
-      // Invariant K: the turn must NOT pass while banked extra dice remain.
+      // No-move contract (external dice / explicit-resolution model):
+      // - A roll never auto-passes merely because the combined dice set has no legal moves.
+      // - The rolled dice still become pendingDice and must be explicitly selected / forfeited.
+      // - This preserves multi-die resolution semantics, including cases like [2,6] where one die
+      //   may be unusable but another die is still selectable or later forfeitable.
       if (moves.length === 0) {
-        const dicePolicy = String((state.turn as any)?.dicePolicy ?? "");
-        const isExternalDice = dicePolicy === "external";
-        const requiresNoMoveAck = isExternalDice && (((state.turn as any)?.noMoveAck === true) || (((state.game as any)?.turn?.noMoveAck) === true));
-
-        if (requiresNoMoveAck) {
-          const nextTurn: TurnInfo = {
-            ...state.turn,
-            nextActorId: rollerId,
-            awaitingDice: false,
-          };
-
-          const nextState: SessionState = {
-            ...state,
-            turn: nextTurn,
-            pendingDice: dice.map((v) => ({ value: v, controllerId: rollerId })),
-            actingActorId: rollerId,
-            bankedDice: bankedAfter,
-          };
-
-          const turnForMsg = buildTurnForMessage(nextState, nextTurn);
-
-          logLegalMovesEmission("roll", roomCode, rollerId, dice, moves, nextState, reqId);
-
-          return {
-            nextState,
-            serverMessage: mkLegalMoves(roomCode, rollerId, dice, moves, reqId, turnForMsg),
-          };
-        }
-
-        // Backward-compatible auto-pass (non-external dice policy).
-        const nextActorId = bankedAfter > 0 ? rollerId : computeNextActorId(state.game as any, rollerId);
         const nextTurn: TurnInfo = {
           ...state.turn,
-          nextActorId,
-          awaitingDice: true,
+          nextActorId: rollerId,
+          awaitingDice: false,
         };
 
         const nextState: SessionState = {
           ...state,
           turn: nextTurn,
-          pendingDice: undefined,
-          actingActorId: undefined,
+          pendingDice: dice.map((v) => ({ value: v, controllerId: rollerId })),
+          actingActorId: rollerId,
           bankedDice: bankedAfter,
         };
 
@@ -457,6 +428,15 @@ export function handleClientMessage(
         actingActorId: rollerId,
         bankedDice: bankedAfter,
       };
+
+      // Multi-die turns must remain neutral until the acting player explicitly selects
+      // which pending die to resolve. Do not auto-emit legalMoves from roll in that case.
+      if (dice.length > 1) {
+        return {
+          nextState,
+          serverMessage: mkStateSync(roomCode, nextState, reqId),
+        };
+      }
 
       const turnForMsg = buildTurnForMessage(nextState, nextTurn);
 
