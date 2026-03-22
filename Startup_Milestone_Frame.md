@@ -90,7 +90,12 @@ Notes:
 • Arrow indicators are informational only; destination spots remain the
   clickable interaction target.  
 • Multi-die state remains gated: no arrows are shown until a die is
-  explicitly selected when multiple pending dice exist.
+  explicitly selected when multiple pending dice exist.  
+• Current remaining M7 blocker has been narrowed to server turn-envelope
+  normalization / contract stability rather than additional UI rendering
+  work.  
+• App.tsx checkpoint baseline is preserved and should be treated as the
+  restart-safe UI anchor until server contract work is complete.  
 
 ------------------------------------------------------------------------
 
@@ -365,8 +370,6 @@ Result:
 
 ------------------------------------------------------------------------
 
-------------------------------------------------------------------------
-
 ### M7 VALIDATION RECORD — 2026-03-20  
 (Peg-First Interaction, Crosshair Destinations, Turn Sync)
 
@@ -418,3 +421,74 @@ Notes:
 • Dynamic per-die roll input work was attempted but is unstable and
   intentionally deferred; restart from last-known-good App.tsx in next session.
 
+------------------------------------------------------------------------
+
+### M7 VALIDATION RECORD — 2026-03-21  
+(Server Turn-Envelope Contract Isolation)
+
+Objective:
+
+Isolate the remaining M7 instability and determine whether the active
+failure is caused by UI state handling or by inconsistent server turn
+envelopes.
+
+Issues observed:
+
+• After otherwise-correct double-dice interaction, UI sometimes showed:
+  - Expected Roll Count = 2
+  - pending dice missing or disappearing
+  - banked dice resetting to 0
+  - inconsistent “In Play” display during roll / move transitions
+
+• Multiple replacement attempts across App.tsx and wsServer.ts caused
+  repeated churn without stable forward progress
+
+• Some experimental replacements broke full UI or server wiring and had
+  to be discarded
+
+Root cause:
+
+• The active issue was narrowed to inconsistent server turn envelopes,
+  not core UI rendering
+
+• The UI baseline file can render and interact correctly when supplied a
+  complete turn payload, but behavior becomes unstable when outbound
+  turn objects are incomplete or inconsistent across:
+  - stateSync
+  - legalMoves
+  - moveResult
+
+• Required turn fields were identified explicitly as:
+  - pendingDice
+  - bankedDice
+  - awaitingDice
+
+Resolution this session:
+
+• Preserved App.tsx checkpoint as the restart-safe baseline
+• Preserved wsServer.ts as a working runtime baseline
+• Confirmed handleMessage.ts roll path already emits legalMoves in the
+  expected non-team flow
+• Confirmed root-cause layer is server contract / turn normalization,
+  not additional UI affordance work
+• Stopped further forward coding once layer ownership was identified
+
+Validated behavior:
+
+• Server still launches correctly at session end
+• App.tsx checkpoint remains the safe UI baseline for restart
+• M7 refinement work is blocked specifically by server turn-envelope
+  normalization rather than by unresolved board interaction design
+
+Result:
+
+• Remaining M7 open work is now clearly defined:
+  normalize / enforce complete turn envelopes in server outbound
+  messages before returning to further UI refinement
+
+• Next session should begin from:
+  - App_checkpoint.tsx baseline
+  - working wsServer.ts runtime baseline
+  - server-only contract normalization focus
+
+------------------------------------------------------------------------

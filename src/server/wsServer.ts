@@ -467,7 +467,45 @@ function computeLobby(room: Room): LobbyState {
 }
 
 function computeTurn(room: Room): TurnInfo {
-  return room.session.turn;
+  const turn = { ...(room.session.turn as any) };
+  if (Array.isArray((room.session as any).pendingDice)) {
+    turn.pendingDice = (room.session as any).pendingDice;
+  }
+  if (
+    typeof (room.session as any).bankedDice === "number" &&
+    Number.isInteger((room.session as any).bankedDice) &&
+    (room.session as any).bankedDice > 0
+  ) {
+    turn.bankedDice = (room.session as any).bankedDice;
+  }
+  return turn as TurnInfo;
+}
+
+function computeExpectedRollCountForSession(room: Room): number {
+  const turn = computeTurn(room) as any;
+  const pending = Array.isArray(turn.pendingDice) ? turn.pendingDice : [];
+  const banked =
+    typeof turn.bankedDice === "number" && Number.isInteger(turn.bankedDice)
+      ? turn.bankedDice
+      : 0;
+  const awaitingDice = turn.awaitingDice === true;
+
+  if (pending.length > 0) {
+    return 0;
+  }
+
+  if (banked > 0) {
+    return banked;
+  }
+
+  if (awaitingDice) {
+    const doubleDice =
+      (room.session.game as any)?.config?.options?.doubleDice === true ||
+      (room.session.game as any)?.config?.doubleDice === true;
+    return doubleDice ? 2 : 1;
+  }
+
+  return 0;
 }
 
 function emitLobbySync(room: Room, reqId?: string) {
@@ -630,6 +668,7 @@ function emitStateSync(room: Room, reqId?: string) {
       state: serializeState(room.session.game),
       stateHash: hashState(room.session.game),
       turn,
+      expectedRollCount: computeExpectedRollCountForSession(room),
     } as any,
     reqId
   );

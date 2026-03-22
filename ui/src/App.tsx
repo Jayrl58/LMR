@@ -184,10 +184,9 @@ function getCurrentTurnPlayerId(gameState: GameState): string {
   return "";
 }
 
-function parsePendingDice(gameState: GameState): PendingDieView[] {
-  const turn = gameState.turn as unknown;
-  if (!isObject(turn)) return [];
-  const raw = Array.isArray(turn.pendingDice) ? turn.pendingDice : [];
+function parsePendingDiceFromTurn(turnValue: unknown): PendingDieView[] {
+  if (!isObject(turnValue)) return [];
+  const raw = Array.isArray(turnValue.pendingDice) ? turnValue.pendingDice : [];
   return raw
     .map((entry) => {
       if (typeof entry === "number" && Number.isInteger(entry)) {
@@ -201,6 +200,33 @@ function parsePendingDice(gameState: GameState): PendingDieView[] {
       };
     })
     .filter((entry): entry is PendingDieView => !!entry);
+}
+
+function parsePendingDice(gameState: GameState): PendingDieView[] {
+  return parsePendingDiceFromTurn(gameState.turn as unknown);
+}
+
+function parseBankedDice(turnValue: unknown): number {
+  if (!isObject(turnValue)) return 0;
+  return typeof turnValue.bankedDice === "number" && Number.isInteger(turnValue.bankedDice)
+    ? turnValue.bankedDice
+    : 0;
+}
+
+function computeExpectedRollCountForUi(gameState: GameState, turnOverride?: unknown): number {
+  const turnValue = turnOverride ?? (gameState.turn as unknown);
+  const pendingDice = parsePendingDiceFromTurn(turnValue);
+  const bankedDice = parseBankedDice(turnValue);
+  const awaitingDice = isObject(turnValue) && turnValue.awaitingDice === true;
+
+  if (pendingDice.length > 0) return 0;
+  if (bankedDice > 0) return bankedDice;
+
+  if (awaitingDice) {
+    return gameState.config.options?.doubleDice ? 2 : 1;
+  }
+
+  return 0;
 }
 
 function buildLobbySeatRows(lobby: LobbyViewState | null): LobbySeatRow[] {
@@ -221,18 +247,20 @@ function buildLobbySeatRows(lobby: LobbyViewState | null): LobbySeatRow[] {
   });
 }
 
-function parseRollInput(value: string): number[] {
-  return value
-    .split(/[,\s]+/)
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => Number(part))
-    .filter((die) => Number.isInteger(die) && die >= 1 && die <= 6);
-}
-
 function parseDiceList(value: unknown): number[] {
   if (!Array.isArray(value)) return [];
   return value.filter((die): die is number => typeof die === "number" && Number.isInteger(die));
+}
+
+function parseRollValues(values: string[]): number[] {
+  return values
+    .map((value) => Number(value.trim()))
+    .filter((die) => Number.isInteger(die) && die >= 1 && die <= 6);
+}
+
+function resizeRollValues(previous: string[], nextCount: number): string[] {
+  if (nextCount <= 0) return [];
+  return Array.from({ length: nextCount }, (_, index) => previous[index] ?? "");
 }
 
 function parseMoveLabel(move: Record<string, unknown>, fallbackIndex: number): string {
@@ -275,7 +303,6 @@ function parseMove(option: LegalMoveOption): ParsedMove | null {
   }
 }
 
-
 function getMovePegId(move: ParsedMove): string | null {
   const playerId =
     typeof move.playerId === "string"
@@ -295,10 +322,7 @@ function getMovePegId(move: ParsedMove): string | null {
   return `${playerId}-${pegIndex}`;
 }
 
-function getMovablePegIds(
-  legalMoveOptions: LegalMoveOption[],
-  selectedDie: string
-): string[] {
+function getMovablePegIds(legalMoveOptions: LegalMoveOption[], selectedDie: string): string[] {
   if (!selectedDie) return [];
 
   const selectedDieValue = Number(selectedDie);
@@ -425,11 +449,7 @@ function buildDestinationHighlights(
 
     const actorPlayerId = getMoveActorPlayerId(move, fallbackPlayerId);
     const destinationPosition = getMoveTargetPosition(move);
-    const destinationHole = mapMovePositionToHole(
-      destinationPosition,
-      actorPlayerId,
-      boardArms
-    );
+    const destinationHole = mapMovePositionToHole(destinationPosition, actorPlayerId, boardArms);
     if (!destinationHole) return;
 
     const key = JSON.stringify(destinationHole);
@@ -468,11 +488,7 @@ function findMoveForDestination(
 
     const actorPlayerId = getMoveActorPlayerId(move, fallbackPlayerId);
     const destinationPosition = getMoveTargetPosition(move);
-    const destinationHole = mapMovePositionToHole(
-      destinationPosition,
-      actorPlayerId,
-      boardArms
-    );
+    const destinationHole = mapMovePositionToHole(destinationPosition, actorPlayerId, boardArms);
     if (!destinationHole) continue;
 
     if (holesEqual(destinationHole, clickedHole)) return option;
@@ -568,7 +584,9 @@ function LobbyView(props: {
             <b>Expected Players:</b> {expectedCount ?? "-"} | <b>Seated:</b> {seatedCount}
           </div>
 
-          <div style={{ marginBottom: "12px", padding: "10px", border: "1px solid #666", width: "fit-content" }}>
+          <div
+            style={{ marginBottom: "12px", padding: "10px", border: "1px solid #666", width: "fit-content" }}
+          >
             <div style={{ marginBottom: "8px" }}>
               <b>Pre-Game Options</b>
             </div>
@@ -681,16 +699,19 @@ function GameView(props: {
   roomCode: string;
   gameState: GameState;
   selectedDie: string;
-  rollInput: string;
   latestMessageType: string;
   latestStatusText: string;
   pendingDice: PendingDieView[];
+  localRolledDice: number[];
+  bankedDice: number;
+  expectedRollCount: number;
+  rollValues: string[];
   legalMoveOptions: LegalMoveOption[];
   destinationHighlights: DestinationHighlight[];
   movablePegIds: string[];
   selectedPegId: string | null;
   firstLegalMoveRaw: string;
-  onRollInputChange: (value: string) => void;
+  onRollValueChange: (index: number, value: string) => void;
   onRoll: () => void;
   onSelectDie: (value: string) => void;
   onPegClick: (pegId: string) => void;
@@ -704,16 +725,19 @@ function GameView(props: {
     roomCode,
     gameState,
     selectedDie,
-    rollInput,
     latestMessageType,
     latestStatusText,
     pendingDice,
+    localRolledDice,
+    bankedDice,
+    expectedRollCount,
+    rollValues,
     legalMoveOptions,
     destinationHighlights,
     movablePegIds,
     selectedPegId,
     firstLegalMoveRaw,
-    onRollInputChange,
+    onRollValueChange,
     onRoll,
     onSelectDie,
     onPegClick,
@@ -757,6 +781,11 @@ function GameView(props: {
   const turnSeat = playerSeatById.get(currentTurnPlayerId);
   const turnColorText = typeof turnSeat === "number" ? getColorForSeat(turnSeat) : "-";
   const isCurrentPlayerTurn = !!playerId && playerId === currentTurnPlayerId;
+  const effectivePendingDice =
+    pendingDice.length > 0
+      ? pendingDice
+      : localRolledDice.map((value) => ({ value, controllerId: currentTurnPlayerId || null }));
+  const effectiveExpectedRollCount = effectivePendingDice.length > 0 ? 0 : expectedRollCount;
 
   return (
     <div>
@@ -773,32 +802,43 @@ function GameView(props: {
         </span>
       </div>
 
-      <div style={{ marginBottom: "12px", padding: "10px", border: "1px solid #666", width: "fit-content" }}>
+      <div
+        style={{ marginBottom: "12px", padding: "10px", border: "1px solid #666", width: "fit-content" }}
+      >
         <div style={{ marginBottom: "8px" }}>
           <b>Game Controls</b>
         </div>
 
         <div style={{ marginBottom: "8px" }}>
-          <span style={{ marginRight: "8px" }}>Roll Input</span>
-          <input
-            type="text"
-            value={rollInput}
-            onChange={(e) => onRollInputChange(e.target.value)}
-            placeholder="e.g. 4 or 3,5"
-            style={{ width: "120px", marginRight: "8px" }}
-            disabled={!connected || !isCurrentPlayerTurn}
-          />
-          <button onClick={onRoll} disabled={!connected || !isCurrentPlayerTurn}>
+          <b style={{ marginRight: "8px" }}>Roll:</b>
+          {effectiveExpectedRollCount === 0 ? (
+            <span>-</span>
+          ) : (
+            rollValues.map((value, index) => (
+              <input
+                key={index}
+                type="text"
+                inputMode="numeric"
+                maxLength={1}
+                value={value}
+                onChange={(e) => onRollValueChange(index, e.target.value)}
+                placeholder="-"
+                style={{ width: "32px", marginRight: "6px", textAlign: "center" }}
+                disabled={!connected || !isCurrentPlayerTurn}
+              />
+            ))
+          )}
+          <button onClick={onRoll} disabled={!connected || !isCurrentPlayerTurn || effectiveExpectedRollCount === 0}>
             Roll
           </button>
         </div>
 
         <div style={{ marginBottom: "6px" }}>
-          <b>Pending Dice:</b>{" "}
-          {pendingDice.length === 0 ? (
+          <b>In Play:</b>{" "}
+          {effectivePendingDice.length === 0 ? (
             <span>-</span>
           ) : (
-            pendingDice.map((die, index) => {
+            effectivePendingDice.map((die, index) => {
               const dieValue = String(die.value);
               const isSelected = selectedDie === dieValue;
               return (
@@ -820,7 +860,15 @@ function GameView(props: {
         </div>
 
         <div style={{ marginBottom: "6px" }}>
+          <b>Bank:</b> {bankedDice}
+        </div>
+
+        <div style={{ marginBottom: "6px" }}>
           <b>Selected Die:</b> {selectedDie || "-"}
+        </div>
+
+        <div style={{ marginBottom: "6px" }}>
+          <b>Expected Roll Count:</b> {effectiveExpectedRollCount}
         </div>
 
         <div style={{ marginBottom: "6px" }}>
@@ -842,7 +890,7 @@ function GameView(props: {
         <div style={{ marginBottom: "6px" }}>
           <b>First Legal Move Raw:</b>
           <pre style={{ margin: "6px 0 0 0", fontSize: "11px", whiteSpace: "pre-wrap", maxWidth: "360px" }}>
-{firstLegalMoveRaw || "-"}
+            {firstLegalMoveRaw || "-"}
           </pre>
         </div>
 
@@ -879,8 +927,11 @@ export default function App() {
   const [lobby, setLobby] = useState<LobbyViewState | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [selectedDie, setSelectedDie] = useState("");
-  const [rollInput, setRollInput] = useState("1");
   const [pendingDice, setPendingDice] = useState<PendingDieView[]>([]);
+  const [bankedDice, setBankedDice] = useState(0);
+  const [expectedRollCount, setExpectedRollCount] = useState(0);
+  const [rollValues, setRollValues] = useState<string[]>([""]);
+  const [localRolledDice, setLocalRolledDice] = useState<number[]>([]);
   const [legalMoveOptions, setLegalMoveOptions] = useState<LegalMoveOption[]>([]);
   const [rawLegalMoves, setRawLegalMoves] = useState<RawLegalMove[]>([]);
   const [selectedPegId, setSelectedPegId] = useState<string | null>(null);
@@ -931,15 +982,32 @@ export default function App() {
       if (message.type === "stateSync") {
         const parsedState = parseJsonIfString(message.state);
         if (isGameState(parsedState)) {
+          const turnEnvelope = isObject(message.turn) ? message.turn : (parsedState.turn as unknown);
+
           setGameState(parsedState);
           setPhase(parsedState.phase);
-          setPendingDice(parsePendingDice(parsedState));
+          setPendingDice(parsePendingDiceFromTurn(turnEnvelope));
+          setBankedDice(parseBankedDice(turnEnvelope));
           setLegalMoveOptions([]);
           setRawLegalMoves([]);
+          setLocalRolledDice([]);
           setSelectedDie("");
           setSelectedPegId(null);
-          setSelectedPegId(null);
+
+          const nextExpectedRollCount =
+            typeof message.expectedRollCount === "number" && Number.isInteger(message.expectedRollCount)
+              ? message.expectedRollCount
+              : computeExpectedRollCountForUi(parsedState, turnEnvelope);
+          setExpectedRollCount(nextExpectedRollCount);
+          setRollValues((current) => resizeRollValues(current, nextExpectedRollCount));
+        } else {
+          setPendingDice([]);
+          setBankedDice(0);
+          setExpectedRollCount(0);
+          setRollValues([]);
+          setLocalRolledDice([]);
         }
+
         setLatestStatusText("Game state synchronized");
       }
 
@@ -952,14 +1020,34 @@ export default function App() {
         setRawLegalMoves(rawMoves);
         setLegalMoveOptions(parseLegalMoveOptions(rawMoves));
 
-        const dice = parseDiceList(message.dice);
-        if (dice.length > 0) {
-          setPendingDice((current) =>
-            current.length === 0
-              ? dice.map((die) => ({ value: die, controllerId: null }))
-              : current
-          );
+        const turnEnvelope = isObject(message.turn) ? message.turn : null;
+        if (turnEnvelope) {
+          setPendingDice(parsePendingDiceFromTurn(turnEnvelope));
+          setBankedDice(parseBankedDice(turnEnvelope));
+
+          if (
+            typeof message.expectedRollCount === "number" &&
+            Number.isInteger(message.expectedRollCount)
+          ) {
+            setExpectedRollCount(message.expectedRollCount);
+            setRollValues((current) =>
+              resizeRollValues(current, message.expectedRollCount)
+            );
+          } else if (gameState) {
+            const nextExpectedRollCount = computeExpectedRollCountForUi(gameState, turnEnvelope);
+            setExpectedRollCount(nextExpectedRollCount);
+            setRollValues((current) => resizeRollValues(current, nextExpectedRollCount));
+          }
+        } else {
+          const dice = parseDiceList(message.dice);
+          if (dice.length > 0) {
+            setPendingDice((current) =>
+              current.length === 0 ? dice.map((die) => ({ value: die, controllerId: null })) : current
+            );
+          }
         }
+
+        setLocalRolledDice([]);
 
         setLatestStatusText(
           Array.isArray(rawMoves) && rawMoves.length > 0
@@ -971,21 +1059,16 @@ export default function App() {
       if (message.type === "moveResult") {
         const response = message.response;
 
-        const nextStateCandidate =
-          response?.result?.nextState ??
-          response?.nextState ??
-          null;
+        const nextStateCandidate = response?.result?.nextState ?? response?.nextState ?? null;
 
         if (isGameState(nextStateCandidate)) {
           setGameState(nextStateCandidate);
           setPhase(nextStateCandidate.phase);
 
-          const nextTurn =
-            response?.turn ??
-            response?.result?.turn ??
-            null;
+          const nextTurn = response?.turn ?? response?.result?.turn ?? null;
 
           if (nextTurn && typeof nextTurn === "object" && Array.isArray((nextTurn as any).pendingDice)) {
+            setBankedDice(parseBankedDice(nextTurn));
             const rawPending = (nextTurn as any).pendingDice as Array<any>;
             setPendingDice(
               rawPending
@@ -998,26 +1081,31 @@ export default function App() {
                   return {
                     value: (pd as any).value,
                     controllerId:
-                      typeof (pd as any).controllerId === "string"
-                        ? (pd as any).controllerId
-                        : null,
+                      typeof (pd as any).controllerId === "string" ? (pd as any).controllerId : null,
                   };
                 })
                 .filter(Boolean) as PendingDieView[]
             );
           } else {
             setPendingDice(parsePendingDice(nextStateCandidate));
+            setBankedDice(parseBankedDice(nextStateCandidate.turn as unknown));
           }
+
+          const nextExpectedRollCount = computeExpectedRollCountForUi(nextStateCandidate, nextTurn);
+          setExpectedRollCount(nextExpectedRollCount);
+          setRollValues((current) => resizeRollValues(current, nextExpectedRollCount));
 
           setLegalMoveOptions([]);
           setRawLegalMoves([]);
           setSelectedDie("");
+          setSelectedPegId(null);
         }
 
         setLatestStatusText("Move applied");
       }
 
       if (message.type === "error") {
+        setLocalRolledDice([]);
         setLatestStatusText(typeof message.message === "string" ? message.message : "Server error");
       }
 
@@ -1080,6 +1168,15 @@ export default function App() {
     });
   };
 
+  const handleRollValueChange = (index: number, value: string) => {
+    const sanitized = value.replace(/[^1-6]/g, "").slice(0, 1);
+    setRollValues((current) => {
+      const next = resizeRollValues(current, expectedRollCount);
+      next[index] = sanitized;
+      return next;
+    });
+  };
+
   const handleCreateRoom = () => {
     setPlayerId("");
     setPhase("lobby");
@@ -1088,10 +1185,13 @@ export default function App() {
     setLobby(null);
     setGameState(null);
     setPendingDice([]);
+    setBankedDice(0);
+    setExpectedRollCount(0);
+    setRollValues([]);
+    setLocalRolledDice([]);
     setLegalMoveOptions([]);
     setRawLegalMoves([]);
     setSelectedDie("");
-    setSelectedPegId(null);
     setSelectedPegId(null);
     setStoredRoomCode("");
     sendMessage(wsRef.current, { type: "joinRoom" });
@@ -1108,9 +1208,14 @@ export default function App() {
     setLobby(null);
     setGameState(null);
     setPendingDice([]);
+    setBankedDice(0);
+    setExpectedRollCount(0);
+    setRollValues([]);
+    setLocalRolledDice([]);
     setLegalMoveOptions([]);
     setRawLegalMoves([]);
     setSelectedDie("");
+    setSelectedPegId(null);
     setStoredRoomCode(trimmed);
     sendMessage(wsRef.current, { type: "joinRoom", roomCode: trimmed });
   };
@@ -1156,11 +1261,13 @@ export default function App() {
     const currentTurnPlayerId = getCurrentTurnPlayerId(gameState);
     if (!currentTurnPlayerId || currentTurnPlayerId !== playerId) return;
 
-    const dice = parseRollInput(rollInput);
-    if (dice.length === 0) {
+    const dice = parseRollValues(rollValues);
+    if (dice.length !== expectedRollCount || expectedRollCount <= 0) {
       setLatestStatusText("Invalid roll input");
       return;
     }
+
+    setLocalRolledDice(dice);
 
     if (dice.length === 1) {
       sendMessage(wsRef.current, {
@@ -1266,16 +1373,19 @@ export default function App() {
         roomCode={roomCode}
         gameState={gameState}
         selectedDie={selectedDie}
-        rollInput={rollInput}
         latestMessageType={latestMessageType}
         latestStatusText={latestStatusText}
         pendingDice={pendingDice}
+        localRolledDice={localRolledDice}
+        bankedDice={bankedDice}
+        expectedRollCount={expectedRollCount}
+        rollValues={rollValues}
         legalMoveOptions={legalMoveOptions}
         destinationHighlights={destinationHighlights}
         movablePegIds={movablePegIds}
         selectedPegId={selectedPegId}
         firstLegalMoveRaw={firstLegalMoveRaw}
-        onRollInputChange={setRollInput}
+        onRollValueChange={handleRollValueChange}
         onRoll={handleRoll}
         onSelectDie={handleSelectDie}
         onPegClick={handlePegClick}

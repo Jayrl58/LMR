@@ -63,6 +63,25 @@ function buildTurnForMessage(s: SessionState, turnOverride?: TurnInfo): any {
   return turnForMsg;
 }
 
+function computeExpectedRollCount(s: SessionState): number {
+  const awaitingDice = (s.turn as any)?.awaitingDice === true;
+  const banked = Number.isInteger(s.bankedDice) ? (s.bankedDice as number) : 0;
+
+  if (awaitingDice) {
+    if (banked > 0) return banked;
+    const doubleDice = s.game?.config?.options?.doubleDice === true;
+    return doubleDice ? 2 : 1;
+  }
+
+  if (Array.isArray(s.pendingDice) && s.pendingDice.length > 0) {
+    return 0;
+  }
+
+  if (banked > 0) return banked;
+
+  return 0;
+}
+
 function mkStateSync(roomCode: string, s: SessionState, reqId?: string): ServerMessage {
   return withReqId(
     {
@@ -71,6 +90,7 @@ function mkStateSync(roomCode: string, s: SessionState, reqId?: string): ServerM
       state: serializeState(s.game),
       stateHash: hashState(s.game),
       turn: buildTurnForMessage(s),
+      expectedRollCount: computeExpectedRollCount(s),
     } as any,
     reqId
   );

@@ -193,76 +193,92 @@ with strict separation between preview data and authoritative state."
 
 ------------------------------------------------------------------------
 
-------------------------------------------------------------------------
-
-## 2026-03-20 --- UI Iteration Control & Replacement Discipline
+## 2026-03-20 --- UI Iteration Control & Server Contract Misdiagnosis
 
 ### What went well
 
-• **Fast visual validation loop** (refresh + immediate UI inspection) caught regressions quickly
+• **Persistence through repeated failure cycles** led to correct root-cause identification
 
-• **Using real multiplayer sessions early** exposed identity and turn-sync issues that would not appear in single-client testing
+• **Capturing real runtime data (console + screenshots)** exposed that UI was receiving inconsistent turn state
 
-• **Explicit user constraints** (no patching, full-file replacements, one step at a time) helped keep scope bounded when followed
+• **Returning to baseline files (App.tsx checkpoint)** restored a reliable debugging foundation
+
+• **Final isolation of problem layer**:
+
+→ Confirmed issue is server-side contract, not UI rendering
+
+------------------------------------------------------------------------
 
 ### What did not work well
 
-• **Full-file replacement discipline broke down**
+• **Wrong layer targeted repeatedly**
 
-→ Some responses attempted patch-style guidance  
-→ Some replacements were generated against stale or incorrect baselines  
-→ Result: blank screens and regressions
+→ Multiple UI fixes attempted for a server contract problem  
+→ Created “round and round” loop with no progress  
 
-• **Baseline drift during active iteration**
+• **Full-file replacements against unstable baselines**
 
-→ Dynamic roll-input work started without locking a known-good App.tsx  
-→ Subsequent fixes stacked on unstable state  
-→ Made it unclear whether issues were new or inherited
+→ Replacements applied to partially modified or broken files  
+→ Introduced additional errors (blank screens, missing functions)
 
-• **Multiple concerns modified in one pass**
+• **Loss of system integrity during debugging**
 
-→ Input model + state sync + rendering touched together  
-→ Violated single-change rule  
-→ Slowed root-cause isolation
+→ Server file replaced without preserving full wiring  
+→ Caused runtime instability and confusion about failure source  
 
-• **Incorrect source-of-truth assumptions**
+• **Contract ambiguity not identified early**
 
-→ UI attempted to infer dice count from config and pending state inconsistently  
-→ Highlighted need to explicitly define authoritative source before UI changes
+→ No explicit definition of required `turn` envelope  
+→ UI forced to infer missing data  
+
+------------------------------------------------------------------------
 
 ### Process corrections
 
-• **Hard lock baseline before UI refactor**
+• **Identify source-of-truth layer FIRST**
 
-→ Save and label last-known-good file  
-→ Do not proceed without confirmed rollback point
+→ Before making changes, explicitly answer:
+  - Is this UI, server, or engine?  
 
-• **Enforce “replacement-only, from-current-file” rule**
+• **Do not fix downstream symptoms**
 
-→ Always generate replacements from the exact file provided in the same turn  
-→ No inferred or reconstructed files
+→ If UI appears inconsistent:
+  - verify server payload before changing UI  
 
-• **Single-variable change per iteration**
+• **Define required data contracts explicitly**
 
-→ UI layout change OR state change OR data source change — never combined
+→ For turn handling, always require:
+  - pendingDice  
+  - bankedDice  
+  - awaitingDice  
 
-• **Define source of truth before wiring UI**
+• **Preserve system wiring during replacements**
 
-→ For any dynamic UI (dice, moves, turns), explicitly state:
-  - where data comes from
-  - when it is valid
-  - when it is empty
+→ Never replace server files unless:
+  - all imports are preserved  
+  - all integration points are intact  
 
-• **Abort early on instability**
+• **Stop iteration once root cause is identified**
 
-→ If UI regresses (blank screen / core interaction broken):
-  - stop forward work immediately  
-  - revert to baseline  
-  - re-scope smaller
+→ Do not continue modifying code after isolation  
+→ Capture findings and restart clean next session  
+
+------------------------------------------------------------------------
 
 ### Outcome
 
-• Reinforced need for strict baseline control during UI work  
-• Confirmed that full-file replacement workflow must be followed exactly to avoid drift  
-• Identified dynamic UI work (like roll inputs) as requiring tighter scoping and clearer data contracts before implementation
+• Root cause successfully identified:
 
+→ **Server turn envelope inconsistency**
+
+• UI confirmed stable when given correct data
+
+• Next session can begin with a single focused objective:
+
+→ Fix server contract (wsServer turn normalization)
+
+• Reinforced process rule:
+
+"Fix the layer that owns the truth, not the layer that exposes the symptom."
+
+------------------------------------------------------------------------
