@@ -436,6 +436,62 @@ function holesEqual(a: BoardHolePlacement, b: BoardHolePlacement): boolean {
   return false;
 }
 
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const normalized = hex.replace("#", "").trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return null;
+
+  return {
+    r: Number.parseInt(normalized.slice(0, 2), 16),
+    g: Number.parseInt(normalized.slice(2, 4), 16),
+    b: Number.parseInt(normalized.slice(4, 6), 16),
+  };
+}
+
+function getReadableTextColor(backgroundHex: string): string {
+  const rgb = hexToRgb(backgroundHex);
+  if (!rgb) return "#111111";
+
+  const brightness = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
+  return brightness >= 150 ? "#111111" : "#ffffff";
+}
+
+function mixChannel(a: number, b: number, amount: number): number {
+  return Math.round(a + (b - a) * amount);
+}
+
+function mixHexColors(baseHex: string, targetHex: string, amount: number): string {
+  const base = hexToRgb(baseHex);
+  const target = hexToRgb(targetHex);
+  if (!base || !target) return baseHex;
+
+  const r = mixChannel(base.r, target.r, amount);
+  const g = mixChannel(base.g, target.g, amount);
+  const b = mixChannel(base.b, target.b, amount);
+
+  return `#${[r, g, b].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function getDieShellStyle(color: string, disabled = false) {
+  const textColor = getReadableTextColor(color);
+
+  return {
+    width: "42px",
+    height: "42px",
+    borderRadius: "10px",
+    border: `2px solid ${mixHexColors(color, "#000000", 0.22)}`,
+    background: disabled ? mixHexColors(color, "#ffffff", 0.45) : color,
+    color: disabled ? mixHexColors(textColor, "#ffffff", 0.35) : textColor,
+    boxShadow: disabled ? "none" : "inset 0 -2px 0 rgba(0,0,0,0.18)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxSizing: "border-box" as const,
+    fontWeight: 700,
+    fontSize: "18px",
+    lineHeight: 1,
+  };
+}
+
 function buildDestinationHighlights(
   legalMoveOptions: LegalMoveOption[],
   selectedDie: string,
@@ -704,6 +760,7 @@ function LobbyView(props: {
   );
 }
 
+
 function GameView(props: {
   connected: boolean;
   playerId: string;
@@ -798,81 +855,238 @@ function GameView(props: {
       ? pendingDice
       : localRolledDice.map((value) => ({ value, controllerId: currentTurnPlayerId || null }));
   const effectiveExpectedRollCount = effectivePendingDice.length > 0 ? 0 : expectedRollCount;
+  const localPlayerSeat = playerSeatById.get(playerId);
+  const diceColor =
+    typeof localPlayerSeat === "number"
+      ? getColorForSeat(localPlayerSeat)
+      : typeof turnSeat === "number"
+        ? getColorForSeat(turnSeat)
+        : getColorForSeat(0);
+  const rollButtonBackground =
+    connected && isCurrentPlayerTurn && effectiveExpectedRollCount > 0
+      ? mixHexColors(diceColor, "#ffffff", 0.18)
+      : mixHexColors(diceColor, "#ffffff", 0.5);
+  const rollButtonText = getReadableTextColor(rollButtonBackground);
 
   return (
-    <div>
-      <div>
-        <b>Status:</b> {connected ? "Connected" : "Disconnected"} |{" "}
-        <b>Player:</b> {playerId || "-"} | <b>Phase:</b> {phase || "-"} |{" "}
-        <b>Room:</b> {roomCode || "-"}
-      </div>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: "16px",
+      }}
+    >
+      <div
+        style={{
+          position: "relative",
+          width: "fit-content",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            top: "10px",
+            left: "10px",
+            zIndex: 2,
+            width: "190px",
+            padding: "10px",
+            border: "1px solid #666",
+            background: "rgba(250, 250, 250, 0.96)",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
+          }}
+        >
+          <div style={{ marginBottom: "8px" }}>
+            <b>Status</b>
+          </div>
 
-      <div style={{ margin: "8px 0" }}>
-        <b>Turn:</b>{" "}
-        <span style={{ color: turnColorText === "-" ? undefined : turnColorText, fontWeight: "bold" }}>
-          {turnColorText}
-        </span>
+          <div style={{ marginBottom: "6px" }}>
+            <b>Player:</b> {playerId || "-"}
+          </div>
+
+          <div>
+            <b>Turn:</b>{" "}
+            <span style={{ color: turnColorText === "-" ? undefined : turnColorText, fontWeight: "bold" }}>
+              {turnColorText}
+            </span>
+          </div>
+        </div>
+
+        <div
+          style={{
+            position: "absolute",
+            bottom: "10px",
+            left: "10px",
+            zIndex: 2,
+            width: "190px",
+            padding: "10px",
+            border: "1px solid #666",
+            background: "rgba(250, 250, 250, 0.96)",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
+          }}
+        >
+          <div style={{ marginBottom: "8px" }}>
+            <b>Options</b>
+          </div>
+
+          <div style={{ marginBottom: "6px" }}>
+            <b>Double Dice:</b> {gameState.config.options?.doubleDice ? "On" : "Off"}
+          </div>
+
+          <div style={{ marginBottom: "6px" }}>
+            <b>Kill Roll:</b> {gameState.config.options?.killRoll ? "On" : "Off"}
+          </div>
+
+          <div style={{ marginBottom: "6px" }}>
+            <b>Team Play:</b> {gameState.config.options?.teamPlay ? "On" : "Off"}
+          </div>
+
+          <div>
+            <b>Fast Track:</b> {gameState.config.options?.fastTrack ? "On" : "Off"}
+          </div>
+        </div>
+
+        <div
+          style={{
+            position: "absolute",
+            top: "10px",
+            right: "10px",
+            zIndex: 2,
+            width: "292px",
+            padding: "10px",
+            border: "1px solid #666",
+            background: "rgba(250, 250, 250, 0.96)",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
+          }}
+        >
+          {effectiveExpectedRollCount > 0 ? (
+            <div style={{ marginBottom: "10px" }}>
+              <b style={{ marginRight: "8px" }}>Roll:</b>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "8px", flexWrap: "wrap", verticalAlign: "middle" }}>
+                {rollValues.map((value, index) => {
+                  const dieStyle = getDieShellStyle(diceColor, !connected || !isCurrentPlayerTurn);
+                  return (
+                    <div
+                      key={index}
+                      style={{
+                        ...dieStyle,
+                        padding: "0",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={value}
+                        onChange={(e) => onRollValueChange(index, e.target.value)}
+                        placeholder="-"
+                        disabled={!connected || !isCurrentPlayerTurn}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          border: "none",
+                          background: "transparent",
+                          color: dieStyle.color,
+                          textAlign: "center",
+                          fontWeight: 700,
+                          fontSize: "18px",
+                          outline: "none",
+                          padding: "0",
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+
+                <button
+                  onClick={onRoll}
+                  disabled={!connected || !isCurrentPlayerTurn || effectiveExpectedRollCount === 0}
+                  style={{
+                    minWidth: "64px",
+                    height: "42px",
+                    borderRadius: "10px",
+                    border: `2px solid ${mixHexColors(diceColor, "#000000", 0.22)}`,
+                    background: rollButtonBackground,
+                    color: rollButtonText,
+                    fontWeight: 700,
+                    boxShadow:
+                      !connected || !isCurrentPlayerTurn || effectiveExpectedRollCount === 0
+                        ? "none"
+                        : "inset 0 -2px 0 rgba(0,0,0,0.18)",
+                    cursor:
+                      !connected || !isCurrentPlayerTurn || effectiveExpectedRollCount === 0
+                        ? "default"
+                        : "pointer",
+                  }}
+                >
+                  Roll
+                </button>
+              </span>
+            </div>
+          ) : null}
+
+          {effectivePendingDice.length > 0 ? (
+            <div style={{ marginBottom: "10px" }}>
+              
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "8px", flexWrap: "wrap", verticalAlign: "middle" }}>
+                {effectivePendingDice.map((die, index) => {
+                  const dieValue = String(die.value);
+                  const isSelected = selectedDie === dieValue;
+
+                  return (
+                    <button
+                      key={`${die.value}-${index}`}
+                      onClick={() => onSelectDie(dieValue)}
+                      disabled={!connected}
+                      style={{
+                        ...getDieShellStyle(diceColor, !connected),
+                        cursor: connected ? "pointer" : "default",
+                        outline: "none",
+                        transform: isSelected ? "scale(1.06)" : "scale(1)",
+                        boxShadow: isSelected
+                          ? "0 0 0 3px rgba(255,255,255,0.98), 0 0 0 6px rgba(0,0,0,0.62), 0 4px 10px rgba(0,0,0,0.28), inset 0 -2px 0 rgba(0,0,0,0.18)"
+                          : "inset 0 -2px 0 rgba(0,0,0,0.18)",
+                      }}
+                    >
+                      {die.value}
+                    </button>
+                  );
+                })}
+              </span>
+            </div>
+          ) : null}
+
+          <div>
+            <b>Bank:</b> {bankedDice}
+          </div>
+        </div>
+
+        <BoardRenderer
+          arms={arms}
+          pegPlacements={pegPlacements}
+          movablePegIds={movablePegIds}
+          focusedPegId={selectedPegId ?? ""}
+          armColors={armColors}
+          arrowIndicators={[]}
+          destinationHighlights={destinationHighlights}
+          onPegClick={onPegClick}
+          onDestinationClick={onDestinationClick}
+          onBackgroundClick={onBackgroundClick}
+        />
       </div>
 
       <div
-        style={{ marginBottom: "12px", padding: "10px", border: "1px solid #666", width: "fit-content" }}
+        style={{
+          width: "320px",
+          padding: "10px",
+          border: "1px solid #666",
+          background: "#fafafa",
+          alignSelf: "stretch",
+          boxSizing: "border-box",
+        }}
       >
         <div style={{ marginBottom: "8px" }}>
-          <b>Game Controls</b>
-        </div>
-
-        <div style={{ marginBottom: "8px" }}>
-          <b style={{ marginRight: "8px" }}>Roll:</b>
-          {effectiveExpectedRollCount === 0 ? (
-            <span>-</span>
-          ) : (
-            rollValues.map((value, index) => (
-              <input
-                key={index}
-                type="text"
-                inputMode="numeric"
-                maxLength={1}
-                value={value}
-                onChange={(e) => onRollValueChange(index, e.target.value)}
-                placeholder="-"
-                style={{ width: "32px", marginRight: "6px", textAlign: "center" }}
-                disabled={!connected || !isCurrentPlayerTurn}
-              />
-            ))
-          )}
-          <button onClick={onRoll} disabled={!connected || !isCurrentPlayerTurn || effectiveExpectedRollCount === 0}>
-            Roll
-          </button>
-        </div>
-
-        <div style={{ marginBottom: "6px" }}>
-          <b>In Play:</b>{" "}
-          {effectivePendingDice.length === 0 ? (
-            <span>-</span>
-          ) : (
-            effectivePendingDice.map((die, index) => {
-              const dieValue = String(die.value);
-              const isSelected = selectedDie === dieValue;
-              return (
-                <button
-                  key={`${die.value}-${index}`}
-                  onClick={() => onSelectDie(dieValue)}
-                  style={{
-                    marginRight: "6px",
-                    fontWeight: isSelected ? "bold" : undefined,
-                    outline: isSelected ? "2px solid #fff" : undefined,
-                  }}
-                  disabled={!connected}
-                >
-                  {die.value}
-                </button>
-              );
-            })
-          )}
-        </div>
-
-        <div style={{ marginBottom: "6px" }}>
-          <b>Bank:</b> {bankedDice}
+          <b>Debug</b>
         </div>
 
         <div style={{ marginBottom: "6px" }}>
@@ -900,34 +1114,45 @@ function GameView(props: {
         </div>
 
         <div style={{ marginBottom: "6px" }}>
-          <b>First Legal Move Raw:</b>
-          <pre style={{ margin: "6px 0 0 0", fontSize: "11px", whiteSpace: "pre-wrap", maxWidth: "360px" }}>
-            {firstLegalMoveRaw || "-"}
+          <b>Status Text:</b> {latestStatusText || "-"}
+        </div>
+
+        <div style={{ marginBottom: "10px" }}>
+          <b>Raw Game Config:</b>
+          <pre
+            style={{
+              margin: "6px 0 0 0",
+              fontSize: "11px",
+              whiteSpace: "pre-wrap",
+              maxWidth: "100%",
+              overflowX: "auto",
+            }}
+          >
+            {JSON.stringify(gameState.config, null, 2)}
           </pre>
         </div>
 
         <div>
-          <b>Status Text:</b> {latestStatusText || "-"}
+          <b>First Legal Move Raw:</b>
+          <pre
+            style={{
+              margin: "6px 0 0 0",
+              fontSize: "11px",
+              whiteSpace: "pre-wrap",
+              maxWidth: "100%",
+              overflowX: "auto",
+            }}
+          >
+            {firstLegalMoveRaw || "-"}
+          </pre>
         </div>
       </div>
-
-      <BoardRenderer
-        arms={arms}
-        pegPlacements={pegPlacements}
-        movablePegIds={movablePegIds}
-        focusedPegId={selectedPegId ?? ""}
-        armColors={armColors}
-        arrowIndicators={[]}
-        destinationHighlights={destinationHighlights}
-        onPegClick={onPegClick}
-        onDestinationClick={onDestinationClick}
-        onBackgroundClick={onBackgroundClick}
-      />
     </div>
   );
 }
 
 export default function App() {
+
   const wsRef = useRef<WebSocket | null>(null);
 
   const [connected, setConnected] = useState(false);
@@ -1306,6 +1531,7 @@ export default function App() {
 
   const destinationHighlights = useMemo(() => {
     if (!gameState) return [];
+    if (!selectedPegId) return [];
     const fallbackPlayerId = playerId || getCurrentTurnPlayerId(gameState);
     return buildDestinationHighlights(
       legalMoveOptions,

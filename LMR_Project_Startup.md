@@ -37,10 +37,10 @@ http://127.0.0.1:8788
 
 Architecture Notes:
 
-• Node / TypeScript authoritative game engine
-• WebSocket server controls all game state transitions
-• UI clients act as state viewers and command senders only
-• Game state transitions occur exclusively through the server engine
+• Node / TypeScript authoritative game engine  
+• WebSocket server controls all game state transitions  
+• UI clients act as state viewers and command senders only  
+• Game state transitions occur exclusively through the server engine  
 
 Board Geometry Authority:
 
@@ -48,35 +48,67 @@ Playpen/board_geometry/boardGeometry.ts
 
 ---
 
-## Last Session Accomplishments (2026-03-22)
+## Last Session Accomplishments (2026-03-23)
 
-• Identified and fixed **server-side multi-die zero-move bug**
-  - Removed incorrect auto-pass behavior in handleMessage.ts
-  - Ensured pendingDice persist until explicitly resolved
+### M7 Completion + Final Interaction Polish
 
-• Stabilized **die selection → legalMoves request path**
-  - Bound die click directly to getLegalMoves
-  - Eliminated reliance on effect-based dispatch
+• Implemented **clear selected-die visual system**
+  - Structural highlight (outer ring + separator + elevation + scale)
+  - Works consistently across all palette colors
 
-• Implemented **auto-select + auto-request for final die**
-  - When one die remains, legal moves now display automatically
+• Enforced **peg-driven interaction model**
+  - No peg selected → no destination highlights
+  - Background click fully clears selection state
 
-• Fixed **turn ownership desynchronization**
-  - Merged authoritative turn envelope into UI gameState
-  - Ensured nextActorId is the single source of truth
+• Finalized **movable peg highlighting**
+  - Clear visibility across:
+    - base
+    - track
+    - point
+    - one spot
+  - Adopted structural (not color-only) highlight approach
 
-• Validated full gameplay loop across multiple players:
-  - roll → select die → move → consume die → chain rolls → turn advance
+• Completed **dice panel interaction model**
+  - Dynamic rows:
+    - Roll row (pre-roll only)
+    - In-play row (post-roll only)
+  - Dice transition visually from roll → in-play
+  - Player-colored dice inputs and in-play dice
+  - Overlay positioned top-right (player-relative)
 
-• Confirmed correct behavior for:
-  - pendingDice lifecycle
-  - banked dice accumulation and consumption
-  - expectedRollCount transitions
-  - cross-client turn synchronization
+• Refactored **UI panel layout**
+  - Status (top-left): Player + Turn only
+  - Options (bottom-left): game configuration
+  - Debug (right): full state visibility
 
-Result:
+• Fixed **peg deselection behavior**
+  - Background click removes peg selection
+  - Destination highlights correctly cleared
 
-The gameplay loop is now **functionally stable and deterministic**.
+• Fixed **selected die clarity + selection UX**
+
+• Fixed **critical server bug — option propagation**
+  - startGame now merges `room.gameConfig` into active game config
+  - Ensures:
+    - killRoll
+    - doubleDice
+    - teamPlay
+    - fastTrack
+  - UI now reflects true game configuration
+
+• Added **debug visibility for raw game config**
+  - Eliminated ambiguity in client/server binding
+
+---
+
+### Result
+
+• Gameplay interaction layer is **complete and stable**  
+• UI clarity achieved across all interaction surfaces  
+• Server/UI contract fully aligned  
+• All known interaction ambiguities resolved  
+
+→ **M7 COMPLETE**
 
 ---
 
@@ -84,75 +116,74 @@ The gameplay loop is now **functionally stable and deterministic**.
 
 Stable baseline (must be preserved):
 
-• App.tsx (latest merged version with:
-  - turn-envelope merge
-  - direct die selection requests
-  - auto-select final die behavior)
+• App.tsx (latest version with:
+  - structural die selection highlight
+  - peg-gated destination highlighting
+  - dynamic dice panel
+  - split status/options/debug panels)
 
-• handleMessage.ts (zero-move fix applied)
+• handleMessage.ts (zero-move fix intact)
 
-• wsServer.ts unchanged and functioning correctly
+• wsServer.ts (option propagation fix applied)
 
 System status:
 
-• Multiplayer gameplay loop working end-to-end
-• Server/UI contract aligned
-• No fallback UI reconstruction required
+• Multiplayer gameplay loop working end-to-end  
+• Interaction model finalized  
+• Visual clarity validated  
+• Server/UI contract aligned  
+• Debug panel confirms correct state  
 
 ---
 
 ## Next Action
 
-### PRIORITY: M7 Refinement Completion
+### PRIORITY: M8 — Game Completion & Results
 
 Objective:
 
-Complete remaining interaction-layer refinements and prepare for M7 completion lock.
+Define and implement end-of-game behavior and result presentation.
 
 ---
 
-### Task Options
+### Initial Task Options
 
-Option A — Interaction polish (recommended)
+Option A — End-of-game detection (recommended)
 
 Accomplishes:
-• Improve UX clarity and responsiveness
-• Reduce cognitive load during move selection
+• Detect win condition (first player or team finished)
+• Trigger game completion state
 
 Impact:
-• UI-only refinements
-• No server changes required
+• Server-side logic
 
 Pros:
-• Safe
-• Visible improvement
-• Builds on stable foundation
+• Establishes core M8 foundation
 
 Cons:
-• Does not advance milestone boundary directly
+• Requires careful rule validation
 
 ---
 
-Option B — M7 Completion Lock
+Option B — Results UI
 
 Accomplishes:
-• Declare M7 complete
-• Transition to M8 planning
+• Display winner and final standings
 
 Impact:
-• Formal milestone transition
+• UI layer
 
 Pros:
-• Moves project forward structurally
+• Visible progress
 
 Cons:
-• May skip minor polish opportunities
+• Depends on completion detection
 
 ---
 
 ### Recommendation
 
-Option A — perform light refinement pass, then lock M7.
+Option A — implement end-of-game detection first.
 
 ---
 
@@ -162,17 +193,18 @@ At next session start:
 
 1. Confirm baseline:
 
-   • App.tsx = latest merged version (turn-envelope fix included)
-   • handleMessage.ts = zero-move fix version
-   • wsServer.ts = unchanged working version
+   • App.tsx = latest M7-complete version  
+   • handleMessage.ts = zero-move fix version  
+   • wsServer.ts = option propagation fix version  
 
 2. Start with:
-   → M7 refinement OR completion decision
+   → M8 end-of-game detection
 
 3. Do NOT revisit:
-   • turn envelope bugs
-   • multi-die lifecycle bugs
-   unless regression is observed
+   • M7 interaction behavior  
+   • highlight systems  
+   • dice panel layout  
+   unless regression is observed  
 
 ---
 
@@ -183,5 +215,6 @@ Do NOT modify server or UI core logic unless:
 • pendingDice disappears incorrectly  
 • bankedDice miscalculates  
 • turn ownership desync reappears  
+• option propagation fails again  
 
-Otherwise proceed forward to refinement and milestone completion.
+Otherwise proceed forward to M8.

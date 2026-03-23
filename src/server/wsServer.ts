@@ -1016,11 +1016,18 @@ if (msg.type === "setReady") {
           currentPlayerId: startingActorId as any,
         };
 
+        const effectiveOptions = {
+          doubleDice: options?.doubleDice ?? room.gameConfig?.doubleDice ?? false,
+          killRoll: options?.killRoll ?? room.gameConfig?.killRoll ?? false,
+          teamPlay: options?.teamPlay ?? room.gameConfig?.teamPlay ?? false,
+          fastTrack: options?.fastTrack ?? room.gameConfig?.fastTrack ?? false,
+        };
+
         freshGame.config = {
           playerCount: pc,
           options: {
             ...(freshGame.config.options ?? {}),
-            ...(options ?? {}),
+            ...effectiveOptions,
           },
         } as any;
 

@@ -457,6 +457,9 @@ export default function BoardRenderer({
   const specialTrackRingRadius = geometry.holeRadius * 2.05;
   const homeRingRadius = geometry.holeRadius * 2.0;
   const baseRingRadius = geometry.holeRadius * 2.0;
+  const movableGlowRadius = pegRadius + 7;
+  const movableRingRadius = pegRadius + 4.5;
+  const movableShadowRingRadius = pegRadius + 6;
 
   const renderedArrows = useMemo(() => {
     const pegById = new Map(
@@ -697,6 +700,52 @@ export default function BoardRenderer({
           />
         </g>
       ))}
+
+      {placedPegs.map((peg) =>
+        peg.isMovable ? (
+          <circle
+            key={`${peg.pegId}-movable-glow`}
+            cx={peg.screenX}
+            cy={peg.screenY}
+            r={movableGlowRadius}
+            fill="#ffffff"
+            opacity="0.18"
+            pointerEvents="none"
+          />
+        ) : null
+      )}
+
+      {placedPegs.map((peg) =>
+        peg.isMovable ? (
+          <circle
+            key={`${peg.pegId}-movable-shadow-ring`}
+            cx={peg.screenX}
+            cy={peg.screenY}
+            r={movableShadowRingRadius}
+            fill="none"
+            stroke="rgba(0, 0, 0, 0.18)"
+            strokeWidth="1.8"
+            opacity="1"
+            pointerEvents="none"
+          />
+        ) : null
+      )}
+
+      {placedPegs.map((peg) =>
+        peg.isMovable ? (
+          <circle
+            key={`${peg.pegId}-movable-ring`}
+            cx={peg.screenX}
+            cy={peg.screenY}
+            r={movableRingRadius}
+            fill="none"
+            stroke="#ffffff"
+            strokeWidth="2.8"
+            opacity="0.98"
+            pointerEvents="none"
+          />
+        ) : null
+      )}
 
       {placedPegs.map((peg) =>
         peg.isFinished ? (

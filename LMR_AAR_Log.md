@@ -9,84 +9,34 @@ to prevent recurrence.
 
 ### What went well
 
-• Establishing a **baseline renderer reset** enabled recovery from
-repeated rendering failures
-
-• Breaking the problem into **isolated validation steps** (render
-baseline → single arrow → integration → multi-arrow) restored forward
-progress
-
-• Using **visual confirmation gates** ("do arrows appear?", "are they
-directional?") provided fast validation loops
-
-• Final architecture (App → getArrowIndicators → BoardRenderer) proved
-clean and extensible
+• Establishing a baseline renderer reset enabled recovery  
+• Breaking problem into isolated validation steps restored progress  
+• Visual confirmation gates enabled fast validation loops  
+• Final architecture proved clean and extensible  
 
 ------------------------------------------------------------------------
 
 ### What did not work well
 
-• Initial attempts violated process rule:
-
-→ Multiple layers (logic + rendering + integration) were modified
-simultaneously
-
-• Repeated full-file replacements were attempted **without confirming
-baseline stability first**
-
-• Arrow logic was introduced before confirming:
-
-→ data availability  
-→ render pipeline integrity
-
-• This resulted in:
-
-→ blank screens  
-→ lost renderer state  
-→ unnecessary recovery cycles
+• Multiple layers modified simultaneously  
+• Replacements applied without baseline validation  
+• Arrow logic introduced before data and pipeline confirmed  
 
 ------------------------------------------------------------------------
 
 ### Process corrections
 
-• Enforce **render baseline first** for any UI feature:
-
-→ Renderer must display board correctly before adding features
-
-• Introduce new features in strict order:
-
-1) Static render (no logic)  
-2) Single controlled test case  
-3) Data wiring  
-4) Full integration  
-
-• Never introduce:
-
-→ data logic  
-→ rendering changes  
-→ integration wiring  
-
-in the same step
-
-• If UI disappears:
-
-→ Immediately revert to last-known-good  
-→ Do not attempt forward debugging on a broken render
+• Enforce render baseline first  
+• Introduce features in strict order  
+• Never modify logic/render/integration simultaneously  
+• Revert immediately if UI disappears  
 
 ------------------------------------------------------------------------
 
 ### Outcome
 
-• Arrow system successfully implemented with:
-
-→ multi-arrow support  
-→ correct directional vectors  
-→ stable rendering  
-
-• Reinforced process rule:
-
-"UI features must be built from a verified visual baseline upward, not
-integrated all at once."
+• Arrow system successfully implemented  
+• Reinforced baseline-first rule  
 
 ------------------------------------------------------------------------
 
@@ -94,102 +44,33 @@ integrated all at once."
 
 ### What went well
 
-• Maintaining **server-first debugging discipline** prevented unnecessary
-engine changes
-
-• Verifying `handleMessage` early confirmed server contract correctness
-and narrowed scope to UI
-
-• Forcing **end-to-end loop validation**:
-
-→ roll → select die → request → preview → move → apply state
-
-prevented partial fixes from being accepted
-
-• Correctly separating state ownership:
-
-→ `legalMoves` = preview only  
-→ `moveResult` = authoritative state  
-
-was the key turning point
-
-• Using a **repeatable test scenario** (roll 1 + 6, switch, execute)
-enabled fast and consistent validation
+• Server-first debugging discipline  
+• End-to-end loop validation prevented partial fixes  
+• Correct separation of preview vs authoritative state  
 
 ------------------------------------------------------------------------
 
 ### What did not work well
 
-• **App.tsx drift / multiple active variants**
-
-→ Multiple replacements caused loss of known-good baseline  
-→ Uncertainty about which logic was actually running  
-→ Slowed debugging significantly  
-
-• **Overlapping fixes across the same pipeline**
-
-→ die selection  
-→ pendingDice handling  
-→ legalMoves handling  
-
-were modified simultaneously
-
-→ Root cause became obscured  
-
-• **UI-side inference attempts**
-
-→ Tried to derive die context from legalMoves  
-→ Conflicted with server model (die-specific requests required)  
-
-• **Step gating breakdown**
-
-→ Multiple stages (selection, request, move, apply) changed together  
-→ Violated “one thing at a time” rule  
-→ Introduced regressions (e.g., pendingDice overwrite)
+• App.tsx drift / multiple variants  
+• Overlapping fixes across pipeline stages  
+• UI-side inference attempts  
+• Step gating breakdown  
 
 ------------------------------------------------------------------------
 
 ### Process corrections
 
-• **Lock the active working file before debugging**
-
-→ Explicitly confirm which file is authoritative  
-→ Do not introduce alternate variants mid-session  
-
-• **Enforce single-stage pipeline fixes**
-
-Always isolate:
-
-1) die selection  
-2) request  
-3) response  
-4) move execution  
-5) state application  
-
-• **No UI inference where server is authoritative**
-
-→ If data is missing: request it  
-→ Never reconstruct server logic client-side  
-
-• **Use fixed validation scenarios**
-
-→ Continue using controlled repeat cases (e.g., 1 + 6 double-dice)  
-→ Validate full loop before moving forward  
+• Lock active file before debugging  
+• Enforce single-stage pipeline fixes  
+• No UI inference when server is authoritative  
+• Use fixed validation scenarios  
 
 ------------------------------------------------------------------------
 
 ### Outcome
 
-• Full gameplay loop now operational:
-
-→ roll → select die → preview → move → state update  
-
-• Multi-die interaction now deterministic and stable  
-
-• Reinforced process rule:
-
-"Stateful interaction pipelines must be debugged one stage at a time,
-with strict separation between preview data and authoritative state."
+• Gameplay loop operational and deterministic  
 
 ------------------------------------------------------------------------
 
@@ -197,92 +78,33 @@ with strict separation between preview data and authoritative state."
 
 ### What went well
 
-• **Persistence through repeated failure cycles** led to correct root-cause identification
-
-• **Capturing real runtime data (console + screenshots)** exposed that UI was receiving inconsistent turn state
-
-• **Returning to baseline files (App.tsx checkpoint)** restored a reliable debugging foundation
-
-• **Final isolation of problem layer**:
-
-→ Confirmed issue is server-side contract, not UI rendering
+• Persistence through failure cycles  
+• Runtime data exposure clarified issue  
+• Correct layer identified  
 
 ------------------------------------------------------------------------
 
 ### What did not work well
 
-• **Wrong layer targeted repeatedly**
-
-→ Multiple UI fixes attempted for a server contract problem  
-→ Created “round and round” loop with no progress  
-
-• **Full-file replacements against unstable baselines**
-
-→ Replacements applied to partially modified or broken files  
-→ Introduced additional errors (blank screens, missing functions)
-
-• **Loss of system integrity during debugging**
-
-→ Server file replaced without preserving full wiring  
-→ Caused runtime instability and confusion about failure source  
-
-• **Contract ambiguity not identified early**
-
-→ No explicit definition of required `turn` envelope  
-→ UI forced to infer missing data  
+• Wrong layer targeted repeatedly  
+• Replacements on unstable baselines  
+• Contract ambiguity  
 
 ------------------------------------------------------------------------
 
 ### Process corrections
 
-• **Identify source-of-truth layer FIRST**
-
-→ Before making changes, explicitly answer:
-  - Is this UI, server, or engine?  
-
-• **Do not fix downstream symptoms**
-
-→ If UI appears inconsistent:
-  - verify server payload before changing UI  
-
-• **Define required data contracts explicitly**
-
-→ For turn handling, always require:
-  - pendingDice  
-  - bankedDice  
-  - awaitingDice  
-
-• **Preserve system wiring during replacements**
-
-→ Never replace server files unless:
-  - all imports are preserved  
-  - all integration points are intact  
-
-• **Stop iteration once root cause is identified**
-
-→ Do not continue modifying code after isolation  
-→ Capture findings and restart clean next session  
+• Identify source-of-truth layer first  
+• Do not fix downstream symptoms  
+• Define data contracts explicitly  
+• Preserve system wiring  
 
 ------------------------------------------------------------------------
 
 ### Outcome
 
-• Root cause successfully identified:
-
-→ **Server turn envelope inconsistency**
-
-• UI confirmed stable when given correct data
-
-• Next session can begin with a single focused objective:
-
-→ Fix server contract (wsServer turn normalization)
-
-• Reinforced process rule:
-
-"Fix the layer that owns the truth, not the layer that exposes the symptom."
-
-------------------------------------------------------------------------
-
+• Root cause: server contract inconsistency  
+• Reinforced “fix the owning layer” rule  
 
 ------------------------------------------------------------------------
 
@@ -290,69 +112,82 @@ with strict separation between preview data and authoritative state."
 
 ### What went well
 
-• Forced return to **server as source-of-truth** broke UI debugging loop  
-• Targeted single-message capture eliminated noise and guesswork  
-• Shift from behavior debugging → code-path reasoning exposed root cause quickly  
-• Once layer ownership was identified, fixes remained stable  
+• Server as source-of-truth enforced  
+• Single-message validation improved accuracy  
+• Code-path reasoning exposed root cause  
 
 ------------------------------------------------------------------------
 
 ### What did not work well
 
-• **WebSocket message ambiguity**
-→ wrong frames repeatedly analyzed (old roll vs current stateSync)
-
-• **UI-first instinct persisted too long**
-→ delayed correct server-side diagnosis  
-
-• **File baseline drift**
-→ replacements generated from non-current files reintroduced bugs  
-
-• **Missing early state validation step**
-→ no explicit “verify server payload first” gate  
+• Message ambiguity  
+• UI-first instinct persisted  
+• File baseline drift  
 
 ------------------------------------------------------------------------
 
 ### Process corrections
 
-• Add **State Authority Check (mandatory)**
-
-1) Capture one authoritative server message  
-2) Validate:
-   - pendingDice  
-   - bankedDice  
-   - awaitingDice  
-3) Only proceed to UI if server state is correct  
-
-• Enforce **Single-Message Validation Rule**
-→ always capture “immediately after X event”  
-→ reject historical/ambiguous frames  
-
-• Lock **live file before replacement**
-→ always generate from current on-disk file  
-
-• Detect loop condition early
-→ if same symptom persists after 2–3 iterations:
-   - stop
-   - switch to code-path audit or server validation  
-
-• Separate bug types strictly:
-→ Interaction bug = UI  
-→ State bug = server  
-→ never fix both simultaneously  
+• Mandatory state authority check  
+• Single-message validation rule  
+• Lock live file before replacement  
+• Detect loop conditions early  
 
 ------------------------------------------------------------------------
 
 ### Outcome
 
-• Established reliable debugging pattern:
+• Reliable debugging pattern established  
 
-Server message → validate state → then UI  
+------------------------------------------------------------------------
 
-• Eliminated speculative iteration loops  
+## 2026-03-23 --- UI Clarity vs Signal Strength & Correct-Layer Fix Discipline
 
+### What went well
+
+• Rapid visual iteration loops  
+• User perception feedback drove correct decisions  
+• Shift from color-based to structural highlighting  
+• Correct UI vs server layer isolation  
+• Debug panel used as source-of-truth validation  
+
+------------------------------------------------------------------------
+
+### What did not work well
+
+• UI fixes attempted before data verification  
+• Assumption-based debugging (config path guessing)  
+• Over-reliance on color-based highlighting  
+• Weak visual signals accepted too long  
+
+------------------------------------------------------------------------
+
+### Process corrections
+
+• Enforce Visual Clarity Threshold  
+→ if not instantly readable, reject  
+
+• Enforce Data Before Display  
+→ verify payload before UI changes  
+
+• Avoid speculative bindings  
+→ always confirm actual data path  
+
+• Prefer structural UI signals  
+→ contrast, outline, elevation, scale  
+
+• Terminate ineffective approaches early  
+→ switch strategy after 2–3 failed iterations  
+
+------------------------------------------------------------------------
+
+### Outcome
+
+• Clear UI readability standard established  
+• Interaction clarity achieved across system  
+• Root cause fixed at correct layer (server)  
 • Reinforced rule:
 
-"UI must never be debugged before validating server state."
+"Verify the data source before fixing the display, and prefer structural clarity over subtle visual changes."
 
 ------------------------------------------------------------------------

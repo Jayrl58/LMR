@@ -43,7 +43,7 @@ Expand milestones only when explicitly requested
 ✓ M4 — Team Model Expansion  
 ✓ M5 — Game Setup UI  
 ✓ M6 — Graphical Board UI  
-○ M7 — Gameplay Interaction Layer  
+✓ M7 — Gameplay Interaction Layer  
 → M8 — Game Completion & Results  
 → M9 — Production Readiness
 
@@ -66,48 +66,75 @@ Expand milestones only when explicitly requested
 ✓ M7.2 — Peg arrow affordance pipeline  
 ✓ M7.3 — Directional arrow rendering  
 ✓ M7.4 — Multi-arrow support  
-○ M7.5 — Interaction refinements  
-→ M7.6 — Completion lock  
+✓ M7.5 — Interaction refinements  
+✓ M7.6 — Completion lock  
 
 ------------------------------------------------------------------------
 
-### M7 VALIDATION RECORD — 2026-03-22  
-(Turn-Envelope Merge, Multi-Die Stability, Auto-Selection Refinement)
+### M7 VALIDATION RECORD — 2026-03-23  
+(Final Interaction Polish, Option Propagation Fix, UI Clarity Pass)
 
 Objective:
 
-Stabilize gameplay loop by aligning server turn-envelope authority with UI state and completing die interaction flow.
+Finalize gameplay interaction layer, eliminate UI ambiguity, and ensure full alignment between lobby configuration, server state, and UI rendering.
 
-Issues observed:
+Issues resolved:
 
-• Zero-move multi-die rolls incorrectly cleared pending dice  
-• Turn ownership desynced between clients  
-• Final die required manual reselection  
+• Selected die lacked sufficient visual clarity  
+• Peg selection did not fully control destination visibility  
+• Background click did not fully clear interaction state  
+• Movable peg highlighting lacked clarity across zones (base, track, point, one spot)  
+• Dice panel layout lacked clarity and stability  
+• Status panel contained non-player-facing data  
+• Options display did not match selected pregame configuration  
+• Server failed to propagate lobby options (killRoll, etc.) into active game config  
 
 Root cause:
 
-• Server auto-pass logic on zero-move roll  
-• UI not merging authoritative turn envelope  
-• Auto-select did not trigger legalMoves  
+• Insufficient visual hierarchy for selected die  
+• Destination highlight logic not gated by peg selection  
+• UI/state coupling incomplete for deselection  
+• Highlight strategy too subtle (color-based vs structural)  
+• Dice panel not aligned with final interaction model  
+• Status panel mixing debug + player-facing concerns  
+• Options bound to incorrect config path  
+• Server startGame did not merge lobby configuration  
 
 Resolution:
 
-• Server: removed auto-pass, preserved pending dice  
-• UI: merged turn envelope into gameState  
-• UI: direct getLegalMoves on die select  
-• UI: auto-select + auto-request for final die  
+• Implemented strong structural highlight for selected die (ring + elevation + scale)  
+• Enforced rule: no peg selected → no destination highlights  
+• Added background click → full peg deselection  
+• Implemented outer glow highlight for movable pegs across all zones  
+• Refined dice panel:
+  - Roll vs In-Play dynamic rows  
+  - Player-colored dice inputs  
+  - Overlay positioning (top-right of rotated view)  
+• Split UI panels:
+  - Status (Player + Turn only)  
+  - Options (lower-left, game-facing only)  
+  - Debug (right side, full state visibility)  
+• Corrected UI binding to `gameState.config.options`  
+• Fixed server propagation:
+  - Merged `room.gameConfig` into active game config at startGame  
 
 Validated behavior:
 
-• Pending dice persist correctly  
-• Legal moves display reliably  
-• Final die auto-displays moves  
-• Turn advances correctly across players  
+• Selected die is visually unambiguous  
+• Peg selection cleanly controls all highlights  
+• Background click fully resets interaction state  
+• Movable pegs clearly identifiable in all zones  
+• Dice flow (roll → in-play) behaves intuitively  
+• Status panel is minimal and readable  
+• Options panel reflects actual game configuration  
+• Server/UI contract fully aligned  
+• Debug panel confirms correct state at all times  
 
 Result:
 
-• Gameplay loop stable  
-• Server/UI contract aligned  
-• Ready for continuity lock  
+• Gameplay interaction layer complete  
+• UI clarity achieved across all interaction surfaces  
+• Server and UI fully synchronized  
+• Ready for milestone transition  
 
 ------------------------------------------------------------------------
