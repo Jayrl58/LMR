@@ -185,6 +185,25 @@ function getCurrentTurnPlayerId(gameState: GameState): string {
   return "";
 }
 
+function getTeamDisplayLabel(gameState: GameState, playerId: string): string {
+  if (!playerId) return "-";
+
+  const teamId =
+    isObject(gameState.players) &&
+    isObject((gameState.players as Record<string, unknown>)[playerId]) &&
+    typeof ((gameState.players as Record<string, any>)[playerId]?.teamId) === "string"
+      ? String((gameState.players as Record<string, any>)[playerId].teamId)
+      : "";
+
+  if (!teamId) return "-";
+
+  const teams = Array.isArray(gameState.config.options?.teams) ? gameState.config.options?.teams : [];
+  const idx = teams.findIndex((team: any) => team?.teamId === teamId);
+  if (idx >= 0) return `Team ${idx + 1}`;
+
+  return teamId;
+}
+
 function mergeTurnIntoGameState(gameState: GameState, turnOverride: unknown): GameState {
   if (!isObject(turnOverride)) return gameState;
   return {
@@ -216,6 +235,15 @@ function parsePendingDiceFromTurn(turnValue: unknown): PendingDieView[] {
 
 function parsePendingDice(gameState: GameState): PendingDieView[] {
   return parsePendingDiceFromTurn(gameState.turn as unknown);
+}
+
+function getPendingDieControllerId(
+  pendingDice: PendingDieView[],
+  dieValue: string
+): string | null | undefined {
+  if (!dieValue) return undefined;
+  const match = pendingDice.find((die) => String(die.value) === dieValue);
+  return match ? match.controllerId : undefined;
 }
 
 function parseBankedDice(turnValue: unknown): number {
@@ -780,12 +808,14 @@ function GameView(props: {
   movablePegIds: string[];
   selectedPegId: string | null;
   firstLegalMoveRaw: string;
+  canForfeitPendingDice: boolean;
   onRollValueChange: (index: number, value: string) => void;
   onRoll: () => void;
   onSelectDie: (value: string) => void;
   onPegClick: (pegId: string) => void;
   onDestinationClick: (hole: BoardHolePlacement) => void;
   onBackgroundClick: () => void;
+  onForfeitPendingDice: () => void;
 }) {
   const {
     connected,
@@ -806,12 +836,14 @@ function GameView(props: {
     movablePegIds,
     selectedPegId,
     firstLegalMoveRaw,
+    canForfeitPendingDice,
     onRollValueChange,
     onRoll,
     onSelectDie,
     onPegClick,
     onDestinationClick,
     onBackgroundClick,
+    onForfeitPendingDice,
   } = props;
 
   const uiState = useMemo(() => mapGameStateToUI(gameState), [gameState]);
@@ -849,6 +881,8 @@ function GameView(props: {
   const currentTurnPlayerId = getCurrentTurnPlayerId(gameState);
   const turnSeat = playerSeatById.get(currentTurnPlayerId);
   const turnColorText = typeof turnSeat === "number" ? getColorForSeat(turnSeat) : "-";
+  const playerTeamLabel = getTeamDisplayLabel(gameState, playerId);
+  const showTeamRows = gameState.config.options?.teamPlay === true;
   const isCurrentPlayerTurn = !!playerId && playerId === currentTurnPlayerId;
   const effectivePendingDice =
     pendingDice.length > 0
@@ -903,7 +937,13 @@ function GameView(props: {
             <b>Player:</b> {playerId || "-"}
           </div>
 
-          <div>
+          {showTeamRows ? (
+            <div style={{ marginBottom: "6px" }}>
+              <b>Team:</b> {playerTeamLabel}
+            </div>
+          ) : null}
+
+          <div style={showTeamRows ? { marginBottom: "6px" } : undefined}>
             <b>Turn:</b>{" "}
             <span style={{ color: turnColorText === "-" ? undefined : turnColorText, fontWeight: "bold" }}>
               {turnColorText}
@@ -1056,8 +1096,27 @@ function GameView(props: {
             </div>
           ) : null}
 
-          <div>
-            <b>Bank:</b> {bankedDice}
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "nowrap" }}>
+            <div>
+              <b>Bank:</b> {bankedDice}
+            </div>
+            {canForfeitPendingDice ? (
+              <button
+                onClick={onForfeitPendingDice}
+                style={{
+                  height: "32px",
+                  borderRadius: "8px",
+                  border: "1px solid #666",
+                  background: "#f3f3f3",
+                  padding: "0 10px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                No Legal Moves — Pass
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -1366,12 +1425,18 @@ export default function App() {
 
         if (gameState) {
           const currentTurnPlayerId = getCurrentTurnPlayerId(gameState);
-          if (currentTurnPlayerId && currentTurnPlayerId === playerId) {
+          const onlyDieControllerId = pendingDice[0]?.controllerId ?? null;
+          const actingActorId =
+            typeof onlyDieControllerId === "string" && onlyDieControllerId
+              ? onlyDieControllerId
+              : currentTurnPlayerId;
+
+          if (actingActorId && actingActorId === playerId) {
             const parsedDie = Number(onlyDie);
             if (Number.isInteger(parsedDie)) {
               sendMessage(wsRef.current, {
                 type: "getLegalMoves",
-                actorId: currentTurnPlayerId,
+                actorId: actingActorId,
                 die: parsedDie,
               });
             }
@@ -1388,6 +1453,8 @@ export default function App() {
     }
   }, [pendingDice, selectedDie, gameState, playerId]);
 
+  const selectedDieControllerId = getPendingDieControllerId(pendingDice, selectedDie);
+
   const handleSelectDie = (dieValue: string) => {
     setSelectedDie(dieValue);
     setSelectedPegId(null);
@@ -1395,14 +1462,20 @@ export default function App() {
     if (!gameState) return;
 
     const currentTurnPlayerId = getCurrentTurnPlayerId(gameState);
-    if (!currentTurnPlayerId || currentTurnPlayerId !== playerId) return;
+    const dieControllerId = getPendingDieControllerId(pendingDice, dieValue);
+    const actingActorId =
+      typeof dieControllerId === "string" && dieControllerId
+        ? dieControllerId
+        : currentTurnPlayerId;
+
+    if (!actingActorId || actingActorId !== playerId) return;
 
     const parsedDie = Number(dieValue);
     if (!Number.isInteger(parsedDie)) return;
 
     sendMessage(wsRef.current, {
       type: "getLegalMoves",
-      actorId: currentTurnPlayerId,
+      actorId: actingActorId,
       die: parsedDie,
     });
   };
@@ -1524,6 +1597,18 @@ export default function App() {
     });
   };
 
+  const handleForfeitPendingDice = () => {
+    if (!gameState) return;
+
+    const currentTurnPlayerId = getCurrentTurnPlayerId(gameState);
+    if (!currentTurnPlayerId || currentTurnPlayerId !== playerId) return;
+
+    sendMessage(wsRef.current, {
+      type: "forfeitPendingDie",
+      actorId: currentTurnPlayerId,
+    });
+  };
+
   const movablePegIds = useMemo(
     () => getMovablePegIds(legalMoveOptions, selectedDie),
     [legalMoveOptions, selectedDie]
@@ -1554,7 +1639,12 @@ export default function App() {
     if (!gameState) return;
 
     const currentTurnPlayerId = getCurrentTurnPlayerId(gameState);
-    if (!currentTurnPlayerId || currentTurnPlayerId !== playerId) return;
+    const actingActorId =
+      typeof selectedDieControllerId === "string" && selectedDieControllerId
+        ? selectedDieControllerId
+        : currentTurnPlayerId;
+
+    if (!actingActorId || actingActorId !== playerId) return;
 
     if (pendingDice.length > 1 && !selectedDie) {
       setLatestStatusText("Select a die first");
@@ -1571,7 +1661,7 @@ export default function App() {
       selectedDie,
       selectedPegId,
       hole,
-      playerId || currentTurnPlayerId,
+      playerId || actingActorId,
       normalizeArms(gameState.config.playerCount)
     );
 
@@ -1588,12 +1678,23 @@ export default function App() {
 
     sendMessage(wsRef.current, {
       type: "move",
-      actorId: currentTurnPlayerId,
+      actorId: actingActorId,
       dice: [Number(selectedDie)],
       move: parsedMove,
     });
     setSelectedPegId(null);
   };
+
+  const selectedPendingDieIsAvailable =
+    selectedDie !== "" && pendingDice.some((die) => String(die.value) === selectedDie);
+
+  const canForfeitPendingDice =
+    !!gameState &&
+    playerId !== "" &&
+    playerId === getCurrentTurnPlayerId(gameState) &&
+    pendingDice.length > 0 &&
+    selectedPendingDieIsAvailable &&
+    legalMoveOptions.length === 0;
 
   const firstLegalMoveRaw = useMemo(() => {
     if (rawLegalMoves.length === 0) return "";
@@ -1625,12 +1726,14 @@ export default function App() {
         movablePegIds={movablePegIds}
         selectedPegId={selectedPegId}
         firstLegalMoveRaw={firstLegalMoveRaw}
+        canForfeitPendingDice={canForfeitPendingDice}
         onRollValueChange={handleRollValueChange}
         onRoll={handleRoll}
         onSelectDie={handleSelectDie}
         onPegClick={handlePegClick}
         onDestinationClick={handleDestinationClick}
         onBackgroundClick={handleBackgroundClick}
+        onForfeitPendingDice={handleForfeitPendingDice}
       />
     );
   }

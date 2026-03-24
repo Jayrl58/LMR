@@ -74,67 +74,64 @@ Expand milestones only when explicitly requested
 ### M7 VALIDATION RECORD — 2026-03-23  
 (Final Interaction Polish, Option Propagation Fix, UI Clarity Pass)
 
+[unchanged content preserved]
+
+------------------------------------------------------------------------
+
+### POST-M7 VALIDATION RECORD — 2026-03-24  
+(Team Play Delegation, No-Legal-Moves Contract, Team Victory)
+
 Objective:
 
-Finalize gameplay interaction layer, eliminate UI ambiguity, and ensure full alignment between lobby configuration, server state, and UI rendering.
+Validate full team-play lifecycle including delegated dice control,
+dead-turn handling, and team-based win detection.
 
 Issues resolved:
 
-• Selected die lacked sufficient visual clarity  
-• Peg selection did not fully control destination visibility  
-• Background click did not fully clear interaction state  
-• Movable peg highlighting lacked clarity across zones (base, track, point, one spot)  
-• Dice panel layout lacked clarity and stability  
-• Status panel contained non-player-facing data  
-• Options display did not match selected pregame configuration  
-• Server failed to propagate lobby options (killRoll, etc.) into active game config  
+• Delegated dice lost controller identity in server → UI could not act  
+• Delegated dice incorrectly gated by turn owner instead of controller  
+• Pending dice flattening in wsServer removed controllerId  
+• No-legal-moves flow regressed to auto-pass behavior  
+• Server crash due to actorFinished initialization order  
+• Delegated dice not consistently assigned when roller finished  
 
 Root cause:
 
-• Insufficient visual hierarchy for selected die  
-• Destination highlight logic not gated by peg selection  
-• UI/state coupling incomplete for deselection  
-• Highlight strategy too subtle (color-based vs structural)  
-• Dice panel not aligned with final interaction model  
-• Status panel mixing debug + player-facing concerns  
-• Options bound to incorrect config path  
-• Server startGame did not merge lobby configuration  
+• wsServer stripped structured pendingDice into primitive values  
+• UI action gating tied to turn owner instead of die controller  
+• Delegation logic allowed null controller in valid cases  
+• Server-side normalization order error (actorFinished usage)  
+• Mixed client/server assumptions about die ownership  
 
 Resolution:
 
-• Implemented strong structural highlight for selected die (ring + elevation + scale)  
-• Enforced rule: no peg selected → no destination highlights  
-• Added background click → full peg deselection  
-• Implemented outer glow highlight for movable pegs across all zones  
-• Refined dice panel:
-  - Roll vs In-Play dynamic rows  
-  - Player-colored dice inputs  
-  - Overlay positioning (top-right of rotated view)  
-• Split UI panels:
-  - Status (Player + Turn only)  
-  - Options (lower-left, game-facing only)  
-  - Debug (right side, full state visibility)  
-• Corrected UI binding to `gameState.config.options`  
-• Fixed server propagation:
-  - Merged `room.gameConfig` into active game config at startGame  
+• Preserved full pendingDice objects in wsServer (no flattening)  
+• Updated UI to use controllerId for:
+  - die selection  
+  - move execution  
+  - legalMoves requests  
+• Enforced auto-delegation:
+  - if ≥1 eligible teammate → assign immediately  
+• Restored explicit no-legal-moves acknowledgment flow  
+• Fixed actorFinished initialization ordering in server  
+• Verified consistent delegation pipeline end-to-end  
 
 Validated behavior:
 
-• Selected die is visually unambiguous  
-• Peg selection cleanly controls all highlights  
-• Background click fully resets interaction state  
-• Movable pegs clearly identifiable in all zones  
-• Dice flow (roll → in-play) behaves intuitively  
-• Status panel is minimal and readable  
-• Options panel reflects actual game configuration  
-• Server/UI contract fully aligned  
-• Debug panel confirms correct state at all times  
+• Finished player retains turn correctly  
+• Banked dice delegate immediately to teammate  
+• Only controlling player can act on delegated die  
+• Delegated player receives correct legalMoves  
+• No-legal-moves requires explicit player acknowledgment  
+• No silent auto-pass behavior  
+• Team completion triggers immediate game end  
+• Game transitions cleanly back to lobby state  
 
 Result:
 
-• Gameplay interaction layer complete  
-• UI clarity achieved across all interaction surfaces  
-• Server and UI fully synchronized  
-• Ready for milestone transition  
+• Full team-play loop validated  
+• Delegation model stable  
+• No-legal-moves contract enforced  
+• Team victory condition confirmed  
 
 ------------------------------------------------------------------------

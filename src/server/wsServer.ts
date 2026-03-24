@@ -471,7 +471,7 @@ function computeTurn(room: Room): TurnInfo {
   const turn = { ...((room.session.turn as any) ?? {}) };
 
   turn.pendingDice = Array.isArray(s.pendingDice)
-    ? s.pendingDice.map((d: any) => d?.value ?? d)
+    ? s.pendingDice
     : Array.isArray(turn.pendingDice)
       ? turn.pendingDice
       : [];
@@ -1009,6 +1009,7 @@ if (msg.type === "setReady") {
           playerCount: pc as 2 | 3 | 4 | 5 | 6 | 7 | 8,
           doubleDice: !!(options?.doubleDice ?? prevGc.doubleDice),
           teamPlay: !!(options?.teamPlay ?? prevGc.teamPlay),
+          fastTrack: !!(options?.fastTrack ?? prevGc.fastTrack),
         });
 
         freshGame.turn = {
@@ -1067,7 +1068,7 @@ if (msg.type === "setReady") {
         const t = ((room.session.turn as any) ??= {});
 
         t.pendingDice = Array.isArray(s.pendingDice)
-          ? s.pendingDice.map((d: any) => d?.value ?? d)
+          ? s.pendingDice
           : [];
         t.bankedDice = Number.isInteger(s.bankedDice) ? s.bankedDice : 0;
         t.awaitingDice = t.awaitingDice === true;
@@ -1075,7 +1076,13 @@ if (msg.type === "setReady") {
 
       persist(room);
 
-      send(ws, result.serverMessage);
+      const resultType = (result.serverMessage as any)?.type;
+
+      if (resultType === "stateSync") {
+        emitStateSync(room, (msg as any).reqId);
+      } else {
+        send(ws, result.serverMessage);
+      }
 
       // If we just entered ENDED_GAME, start the Endgame Results timer (T=180s).
       if (room.phase === "active" && prevGamePhase !== "ended" && room.session.game.phase === "ended") {
@@ -1083,14 +1090,14 @@ if (msg.type === "setReady") {
       }
 
       // Broadcast moveResult to other room members (default behavior)
-      if ((result.serverMessage as any)?.type === "moveResult") {
+      if (resultType === "moveResult") {
         for (const other of room.sockets) {
           if (other !== ws) send(other, result.serverMessage);
         }
       }
 
       // Optional extra broadcast stateSync (legacy flag); keep as-is
-      if (opts.broadcast) {
+      if (opts.broadcast && resultType !== "stateSync") {
         emitStateSync(room, (msg as any).reqId);
       }
     });

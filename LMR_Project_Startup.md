@@ -48,67 +48,48 @@ Playpen/board_geometry/boardGeometry.ts
 
 ---
 
-## Last Session Accomplishments (2026-03-23)
+## Last Session Accomplishments (2026-03-24)
 
-### M7 Completion + Final Interaction Polish
+### M8 Foundation Validation — Team Play Completion
 
-• Implemented **clear selected-die visual system**
-  - Structural highlight (outer ring + separator + elevation + scale)
-  - Works consistently across all palette colors
+• Fixed **delegated dice control pipeline**
+  - Preserved `pendingDice` structure in wsServer
+  - Restored `controllerId` end-to-end
+  - Eliminated die ownership loss
 
-• Enforced **peg-driven interaction model**
-  - No peg selected → no destination highlights
-  - Background click fully clears selection state
+• Implemented **automatic delegation rule**
+  - Finished player delegates remaining dice immediately
+  - No manual assignment required
 
-• Finalized **movable peg highlighting**
-  - Clear visibility across:
-    - base
-    - track
-    - point
-    - one spot
-  - Adopted structural (not color-only) highlight approach
+• Fixed **server crash condition**
+  - Corrected `actorFinished` initialization ordering
 
-• Completed **dice panel interaction model**
-  - Dynamic rows:
-    - Roll row (pre-roll only)
-    - In-play row (post-roll only)
-  - Dice transition visually from roll → in-play
-  - Player-colored dice inputs and in-play dice
-  - Overlay positioned top-right (player-relative)
+• Restored **no-legal-moves contract**
+  - Explicit player acknowledgment required
+  - Eliminated silent auto-pass behavior
 
-• Refactored **UI panel layout**
-  - Status (top-left): Player + Turn only
-  - Options (bottom-left): game configuration
-  - Debug (right): full state visibility
+• Fixed **client-side delegated die control**
+  - UI now respects `controllerId` instead of turn owner
+  - Legal move requests routed correctly
 
-• Fixed **peg deselection behavior**
-  - Background click removes peg selection
-  - Destination highlights correctly cleared
+• Validated **team victory condition**
+  - First team to fully finish → immediate game end
+  - No continuation after team completion
 
-• Fixed **selected die clarity + selection UX**
-
-• Fixed **critical server bug — option propagation**
-  - startGame now merges `room.gameConfig` into active game config
-  - Ensures:
-    - killRoll
-    - doubleDice
-    - teamPlay
-    - fastTrack
-  - UI now reflects true game configuration
-
-• Added **debug visibility for raw game config**
-  - Eliminated ambiguity in client/server binding
+• Verified **end-of-game transition**
+  - Game exits cleanly to lobby state
+  - No state corruption or lingering turn data
 
 ---
 
 ### Result
 
-• Gameplay interaction layer is **complete and stable**  
-• UI clarity achieved across all interaction surfaces  
-• Server/UI contract fully aligned  
-• All known interaction ambiguities resolved  
+• Team play loop fully validated  
+• Delegation model stable  
+• No-legal-moves behavior correct  
+• Game completion logic confirmed  
 
-→ **M7 COMPLETE**
+→ **M8 foundation established**
 
 ---
 
@@ -116,74 +97,57 @@ Playpen/board_geometry/boardGeometry.ts
 
 Stable baseline (must be preserved):
 
-• App.tsx (latest version with:
-  - structural die selection highlight
-  - peg-gated destination highlighting
-  - dynamic dice panel
-  - split status/options/debug panels)
+• App.tsx  
+  - Delegated die control (controllerId-based)  
+  - Stable move execution pipeline  
+  - No-legal-moves gating restored  
 
-• handleMessage.ts (zero-move fix intact)
+• handleMessage.ts  
+  - Delegation logic fixed  
+  - actorFinished ordering corrected  
+  - No auto-forfeit behavior  
 
-• wsServer.ts (option propagation fix applied)
+• wsServer.ts  
+  - pendingDice structure preserved (no flattening)  
+  - stateSync now includes controllerId  
 
 System status:
 
-• Multiplayer gameplay loop working end-to-end  
-• Interaction model finalized  
-• Visual clarity validated  
-• Server/UI contract aligned  
-• Debug panel confirms correct state  
+• Multiplayer gameplay loop fully stable  
+• Team play functioning end-to-end  
+• Delegated dice working correctly  
+• End-of-game detection verified  
+• Lobby transition clean and consistent  
 
 ---
 
 ## Next Action
 
-### PRIORITY: M8 — Game Completion & Results
+### M8 — Game Completion & Results (Continuation)
 
 Objective:
 
-Define and implement end-of-game behavior and result presentation.
+Implement player-facing end-of-game experience.
 
 ---
 
-### Initial Task Options
+### Immediate Task
 
-Option A — End-of-game detection (recommended)
-
-Accomplishes:
-• Detect win condition (first player or team finished)
-• Trigger game completion state
-
-Impact:
-• Server-side logic
-
-Pros:
-• Establishes core M8 foundation
-
-Cons:
-• Requires careful rule validation
-
----
-
-Option B — Results UI
+Implement **Results Presentation Layer**
 
 Accomplishes:
-• Display winner and final standings
+• Display winning team / player  
+• Show finish order  
+• Provide clear end-of-game feedback  
 
 Impact:
-• UI layer
-
-Pros:
-• Visible progress
-
-Cons:
-• Depends on completion detection
+• UI layer only (server logic already validated)
 
 ---
 
 ### Recommendation
 
-Option A — implement end-of-game detection first.
+Proceed with results UI before expanding additional rules.
 
 ---
 
@@ -193,18 +157,20 @@ At next session start:
 
 1. Confirm baseline:
 
-   • App.tsx = latest M7-complete version  
-   • handleMessage.ts = zero-move fix version  
-   • wsServer.ts = option propagation fix version  
+   • App.tsx = delegated-die stable version  
+   • handleMessage.ts = delegation + no-legal-moves fix version  
+   • wsServer.ts = pendingDice preservation version  
 
 2. Start with:
-   → M8 end-of-game detection
+   → Results presentation UI (M8 continuation)
 
 3. Do NOT revisit:
-   • M7 interaction behavior  
-   • highlight systems  
-   • dice panel layout  
-   unless regression is observed  
+
+   • Delegation logic  
+   • No-legal-moves handling  
+   • pendingDice structure  
+
+Unless regression is observed  
 
 ---
 
@@ -212,9 +178,9 @@ At next session start:
 
 Do NOT modify server or UI core logic unless:
 
-• pendingDice disappears incorrectly  
-• bankedDice miscalculates  
-• turn ownership desync reappears  
-• option propagation fails again  
+• delegated dice lose controllerId  
+• teammate cannot act on delegated dice  
+• no-legal-moves button fails to appear  
+• game does not end on full team completion  
 
-Otherwise proceed forward to M8.
+Otherwise proceed forward.

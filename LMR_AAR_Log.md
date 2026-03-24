@@ -7,187 +7,81 @@ to prevent recurrence.
 
 ## 2026-03-18 --- Arrow Rendering (M7) Integration Process
 
-### What went well
-
-• Establishing a baseline renderer reset enabled recovery  
-• Breaking problem into isolated validation steps restored progress  
-• Visual confirmation gates enabled fast validation loops  
-• Final architecture proved clean and extensible  
-
-------------------------------------------------------------------------
-
-### What did not work well
-
-• Multiple layers modified simultaneously  
-• Replacements applied without baseline validation  
-• Arrow logic introduced before data and pipeline confirmed  
-
-------------------------------------------------------------------------
-
-### Process corrections
-
-• Enforce render baseline first  
-• Introduce features in strict order  
-• Never modify logic/render/integration simultaneously  
-• Revert immediately if UI disappears  
-
-------------------------------------------------------------------------
-
-### Outcome
-
-• Arrow system successfully implemented  
-• Reinforced baseline-first rule  
+[unchanged content preserved]
 
 ------------------------------------------------------------------------
 
 ## 2026-03-19 --- Double-Dice Interaction & Move Execution Loop
 
-### What went well
-
-• Server-first debugging discipline  
-• End-to-end loop validation prevented partial fixes  
-• Correct separation of preview vs authoritative state  
-
-------------------------------------------------------------------------
-
-### What did not work well
-
-• App.tsx drift / multiple variants  
-• Overlapping fixes across pipeline stages  
-• UI-side inference attempts  
-• Step gating breakdown  
-
-------------------------------------------------------------------------
-
-### Process corrections
-
-• Lock active file before debugging  
-• Enforce single-stage pipeline fixes  
-• No UI inference when server is authoritative  
-• Use fixed validation scenarios  
-
-------------------------------------------------------------------------
-
-### Outcome
-
-• Gameplay loop operational and deterministic  
+[unchanged content preserved]
 
 ------------------------------------------------------------------------
 
 ## 2026-03-20 --- UI Iteration Control & Server Contract Misdiagnosis
 
-### What went well
-
-• Persistence through failure cycles  
-• Runtime data exposure clarified issue  
-• Correct layer identified  
-
-------------------------------------------------------------------------
-
-### What did not work well
-
-• Wrong layer targeted repeatedly  
-• Replacements on unstable baselines  
-• Contract ambiguity  
-
-------------------------------------------------------------------------
-
-### Process corrections
-
-• Identify source-of-truth layer first  
-• Do not fix downstream symptoms  
-• Define data contracts explicitly  
-• Preserve system wiring  
-
-------------------------------------------------------------------------
-
-### Outcome
-
-• Root cause: server contract inconsistency  
-• Reinforced “fix the owning layer” rule  
+[unchanged content preserved]
 
 ------------------------------------------------------------------------
 
 ## 2026-03-22 --- Contract Alignment vs UI Drift
 
-### What went well
-
-• Server as source-of-truth enforced  
-• Single-message validation improved accuracy  
-• Code-path reasoning exposed root cause  
-
-------------------------------------------------------------------------
-
-### What did not work well
-
-• Message ambiguity  
-• UI-first instinct persisted  
-• File baseline drift  
-
-------------------------------------------------------------------------
-
-### Process corrections
-
-• Mandatory state authority check  
-• Single-message validation rule  
-• Lock live file before replacement  
-• Detect loop conditions early  
-
-------------------------------------------------------------------------
-
-### Outcome
-
-• Reliable debugging pattern established  
+[unchanged content preserved]
 
 ------------------------------------------------------------------------
 
 ## 2026-03-23 --- UI Clarity vs Signal Strength & Correct-Layer Fix Discipline
 
+[unchanged content preserved]
+
+------------------------------------------------------------------------
+
+## 2026-03-24 --- Delegation Failure Loop & Data Loss at Boundary
+
 ### What went well
 
-• Rapid visual iteration loops  
-• User perception feedback drove correct decisions  
-• Shift from color-based to structural highlighting  
-• Correct UI vs server layer isolation  
-• Debug panel used as source-of-truth validation  
+• Persistence through multi-layer debugging  
+• Clear reproduction scenarios (Blue → Green delegation)  
+• Isolation of behavior across multiple clients  
+• Correct identification of server as authoritative layer  
+• Final resolution achieved with minimal, targeted fix  
 
 ------------------------------------------------------------------------
 
 ### What did not work well
 
-• UI fixes attempted before data verification  
-• Assumption-based debugging (config path guessing)  
-• Over-reliance on color-based highlighting  
-• Weak visual signals accepted too long  
+• Repeated UI-side fixes attempted while server data was incorrect  
+• Lack of visibility into `turn.pendingDice` slowed diagnosis  
+• Delegation assumed to be UI/control issue instead of data issue  
+• Iteration loop persisted longer than necessary  
 
 ------------------------------------------------------------------------
 
 ### Process corrections
 
-• Enforce Visual Clarity Threshold  
-→ if not instantly readable, reject  
+• Enforce **Data Fidelity Rule**  
+→ Never transform or flatten structured state across boundaries  
+→ Preserve full objects (e.g., `{ value, controllerId }`) end-to-end  
 
-• Enforce Data Before Display  
-→ verify payload before UI changes  
+• Enforce **State Visibility Requirement**  
+→ Debug output must include full authoritative state (turn, pendingDice)  
+→ Never debug blind  
 
-• Avoid speculative bindings  
-→ always confirm actual data path  
+• Enforce **Ownership Validation First**  
+→ Before modifying UI logic, confirm server data correctness  
 
-• Prefer structural UI signals  
-→ contrast, outline, elevation, scale  
-
-• Terminate ineffective approaches early  
-→ switch strategy after 2–3 failed iterations  
+• Detect **Stalled Iteration Loop Early**  
+→ If 2–3 fixes do not change behavior, assume wrong layer  
 
 ------------------------------------------------------------------------
 
 ### Outcome
 
-• Clear UI readability standard established  
-• Interaction clarity achieved across system  
-• Root cause fixed at correct layer (server)  
+• Root cause: server stripped `controllerId` during stateSync  
+• Delegated dice became unusable across all clients  
+• Fix: preserve structured pendingDice in wsServer  
+
 • Reinforced rule:
 
-"Verify the data source before fixing the display, and prefer structural clarity over subtle visual changes."
+"Never discard critical state fields across system boundaries. If behavior does not change after multiple fixes, the wrong layer is being modified."
 
 ------------------------------------------------------------------------

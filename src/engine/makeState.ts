@@ -26,13 +26,24 @@ function baseSpot(playerId: PlayerId): SpotRef {
   return { zone: "base", playerId };
 }
 
-function makePegStates(playerId: PlayerId): readonly PegState[] {
+function makePegStates(playerId: PlayerId, fastTrack: boolean): readonly PegState[] {
   const idxs: readonly PegIndex[] = [0, 1, 2, 3];
-  return idxs.map((pegIndex) => ({
-    pegIndex,
-    position: baseSpot(playerId),
-    isFinished: false,
-  }));
+
+  return idxs.map((pegIndex) => {
+    if (fastTrack && pegIndex === 0) {
+      return {
+        pegIndex,
+        position: { zone: "home", playerId, index: 3 },
+        isFinished: true,
+      };
+    }
+
+    return {
+      pegIndex,
+      position: baseSpot(playerId),
+      isFinished: false,
+    };
+  });
 }
 
 function makePlayerState(playerId: PlayerId, seat: number): PlayerState {
@@ -54,6 +65,7 @@ export type TeamMode = "2x2" | "2x3" | "3x2" | "2x4" | "4x2";
 export type MakeStateOptions = {
   playerCount: 2 | 3 | 4 | 5 | 6 | 7 | 8;
   doubleDice?: boolean;
+  fastTrack?: boolean;
 
   /**
    * Team play (optional).
@@ -128,7 +140,7 @@ function makeDefaultTeams(playerIds: readonly PlayerId[], mode: TeamMode): reado
  * Minimal deterministic initial state:
  * - phase: "active" (so gameplay messages are accepted immediately)
  * - players: p0..p{n-1}, seats 0..n-1
- * - all pegs in base
+ * - all pegs in base unless fastTrack is enabled
  * - currentPlayerId: "p0"
  * - roll: idle
  */
@@ -166,7 +178,7 @@ export function makeState(opts: MakeStateOptions): GameState {
     }
 
     players[pid] = ps;
-    pegStates[pid] = makePegStates(pid);
+    pegStates[pid] = makePegStates(pid, !!opts.fastTrack);
   });
 
   const state: GameState = {
@@ -176,6 +188,7 @@ export function makeState(opts: MakeStateOptions): GameState {
       playerCount: n,
       options: {
         doubleDice: !!opts.doubleDice,
+        fastTrack: !!opts.fastTrack,
 
         // Team-play options are present only when enabled.
         ...(teamPlay ? { teamPlay: true, teams } : {}),

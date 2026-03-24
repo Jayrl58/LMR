@@ -204,6 +204,17 @@ function hasLegalMoveForPlayer(game: any, playerId: string, dieValue: number): b
   return Array.isArray(lm) && lm.length > 0;
 }
 
+function getEligibleTeammatesForDie(game: any, rollerId: string, dieValue: number): string[] {
+  return getTeamMembers(game, rollerId)
+    .filter((pid) => pid !== rollerId)
+    .filter((pid) => hasLegalMoveForPlayer(game, pid, dieValue));
+}
+
+function getAutoDelegationController(game: any, rollerId: string, dieValue: number): string | null {
+  const eligible = getEligibleTeammatesForDie(game, rollerId, dieValue);
+  return eligible.length > 0 ? eligible[0] : null;
+}
+
 /**
  * Normalize a client-provided roll/getLegalMoves/move payload to a dice array.
  * - Preferred: msg.dice
@@ -347,42 +358,52 @@ export function handleClientMessage(
       const teamPlayOn = state.game?.config?.options?.teamPlay === true;
 
       // Team-play delegation model:
-      // - Pending dice start UNASSIGNED (controllerId=null).
-      // - Turn owner assigns each die to a teammate who has at least one legal move for that die.
-      // - If the ENTIRE team has no legal moves for ALL rolled dice, the roll auto-passes.
+      // - Before the turn owner has finished, the turn owner controls rolled dice directly.
+      // - After the turn owner has finished, pending dice start UNASSIGNED (controllerId=null)
+      //   and must be delegated to an eligible teammate.
+      // - If the ENTIRE team has no legal moves for ALL rolled dice, the roll does NOT auto-pass.
+      //   The unresolved dice remain pending until the turn owner explicitly acknowledges
+      //   the dead turn via forfeitPendingDie.
       if (teamPlayOn) {
-        const anyTeamMove = dice.some((v) => hasAnyLegalMoveForTeam(state.game as any, rollerId, v));
-        if (!anyTeamMove) {
-          const nextActorId = bankedAfter > 0 ? rollerId : computeNextActorId(state.game as any, rollerId);
-          const nextTurn: TurnInfo = {
-            ...state.turn,
-            nextActorId,
-            awaitingDice: true,
-          };
+        const rollerFinished = state.game?.players?.[rollerId]?.hasFinished === true;
+        const nextTurn: TurnInfo = { ...state.turn, awaitingDice: false };
+        const nextPendingDice = rollerFinished
+          ? dice.map((v) => ({
+              value: v,
+              controllerId: getAutoDelegationController(state.game as any, rollerId, v),
+            }))
+          : dice.map((v) => ({ value: v, controllerId: rollerId }));
 
-          const nextState: SessionState = {
-            ...state,
-            turn: nextTurn,
-            pendingDice: undefined,
-            actingActorId: undefined,
-            bankedDice: bankedAfter,
-          };
+        const nextState: SessionState = {
+          ...state,
+          turn: nextTurn,
+          pendingDice: nextPendingDice,
+          actingActorId: rollerFinished ? undefined : rollerId,
+          bankedDice: bankedAfter,
+        };
 
+        // Multi-die turns must remain neutral until the acting player explicitly selects
+        // which pending die to resolve. Do not auto-emit legalMoves from roll in that case.
+        if (dice.length > 1) {
           return {
             nextState,
             serverMessage: mkStateSync(roomCode, nextState, reqId),
           };
         }
 
-        const nextTurn: TurnInfo = { ...state.turn, awaitingDice: false };
+        // In pre-finisher team play, single-die rolls behave like normal play: the roller
+        // immediately controls the die and may request/use legal moves without delegation.
+        if (!rollerFinished) {
+          const moves = legalMoves(state.game as any, rollerId as any, dice as any) as any[];
+          const turnForMsg = buildTurnForMessage(nextState, nextTurn);
 
-        const nextState: SessionState = {
-          ...state,
-          turn: nextTurn,
-          pendingDice: dice.map((v) => ({ value: v, controllerId: null })),
-          actingActorId: undefined,
-          bankedDice: bankedAfter,
-        };
+          logLegalMovesEmission("roll", roomCode, rollerId, dice, moves, nextState, reqId);
+
+          return {
+            nextState,
+            serverMessage: mkLegalMoves(roomCode, rollerId, dice, moves, reqId, turnForMsg),
+          };
+        }
 
         return {
           nextState,
@@ -870,6 +891,8 @@ export function handleClientMessage(
         }
         const banked1 = banked0 + killRollEarned;
 
+        const actorFinished = nextGame?.players?.[actorId]?.hasFinished === true;
+
         // If there are still pending dice remaining, normalize them:
         // - Preserve per-die controllerId immutably while the controller still has legal moves.
         // - If a controller no longer has legal moves for their die, unassign it (controllerId=null) IF some teammate can use it.
@@ -877,9 +900,31 @@ export function handleClientMessage(
         if (Array.isArray(state.pendingDice) && state.pendingDice.length > 0 && remainingPendingDice.length > 0) {
           const normalized: PendingDie[] = [];
           for (const pd of remainingPendingDice) {
-            const anyTeamMove = teamPlayOn ? hasAnyLegalMoveForTeam(nextGame as any, rollerId, pd.value) : hasLegalMoveForPlayer(nextGame as any, rollerId, pd.value);
+            const delegationSourceId =
+              teamPlayOn && actorFinished
+                ? actorId
+                : teamPlayOn && nextGame?.players?.[rollerId]?.hasFinished === true
+                  ? rollerId
+                  : null;
+
+            const anyTeamMove = teamPlayOn
+              ? hasAnyLegalMoveForTeam(nextGame as any, delegationSourceId ?? rollerId, pd.value)
+              : hasLegalMoveForPlayer(nextGame as any, rollerId, pd.value);
+
             if (!anyTeamMove) {
-              // forfeit this die
+              // DO NOT auto-forfeit dead dice.
+              // Keep the die so the player must explicitly acknowledge via forfeitPendingDie.
+              normalized.push({ ...pd, controllerId: null });
+              continue;
+            }
+
+            if (teamPlayOn && delegationSourceId) {
+              const delegatedController = getAutoDelegationController(
+                nextGame as any,
+                delegationSourceId,
+                pd.value
+              );
+              normalized.push({ ...pd, controllerId: delegatedController });
               continue;
             }
 
@@ -933,7 +978,6 @@ export function handleClientMessage(
         if (typeof nextActorId !== "string") nextActorId = rollerId;
 
         // Team play finisher keeps the turn (continue rolling/distributing).
-        const actorFinished = nextGame?.players?.[actorId]?.hasFinished === true;
         if (teamPlayOn && actorFinished) {
           nextActorId = actorId;
         }
