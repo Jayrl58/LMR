@@ -56,6 +56,24 @@ type RawLegalMove = unknown;
 
 type ParsedMove = Record<string, unknown>;
 
+type GameOverResult =
+  | {
+      mode: "solo";
+      winner: {
+        playerId: string;
+        name: string;
+        color: string;
+      };
+    }
+  | {
+      mode: "team";
+      winners: Array<{
+        playerId: string;
+        name: string;
+        color: string;
+      }>;
+    };
+
 const WS_URL = "ws://127.0.0.1:8787";
 const MAX_LOBBY_SEATS = 8;
 const PLAYER_COUNT_OPTIONS = [4, 6, 8] as const;
@@ -200,9 +218,9 @@ function getTeamDisplayLabel(gameState: GameState, playerId: string): string {
   const teams = Array.isArray(gameState.config.options?.teams) ? gameState.config.options?.teams : [];
   const idx = teams.findIndex((team: any) => team?.teamId === teamId);
   if (idx >= 0) return `Team ${idx + 1}`;
-
   return teamId;
 }
+
 
 function mergeTurnIntoGameState(gameState: GameState, turnOverride: unknown): GameState {
   if (!isObject(turnOverride)) return gameState;
@@ -788,7 +806,6 @@ function LobbyView(props: {
   );
 }
 
-
 function GameView(props: {
   connected: boolean;
   playerId: string;
@@ -809,6 +826,8 @@ function GameView(props: {
   selectedPegId: string | null;
   firstLegalMoveRaw: string;
   canForfeitPendingDice: boolean;
+  gameOverResult: GameOverResult | null;
+  isOwner: boolean;
   onRollValueChange: (index: number, value: string) => void;
   onRoll: () => void;
   onSelectDie: (value: string) => void;
@@ -816,6 +835,7 @@ function GameView(props: {
   onDestinationClick: (hole: BoardHolePlacement) => void;
   onBackgroundClick: () => void;
   onForfeitPendingDice: () => void;
+  onReturnToLobby: () => void;
 }) {
   const {
     connected,
@@ -837,6 +857,8 @@ function GameView(props: {
     selectedPegId,
     firstLegalMoveRaw,
     canForfeitPendingDice,
+    gameOverResult,
+    isOwner,
     onRollValueChange,
     onRoll,
     onSelectDie,
@@ -844,6 +866,7 @@ function GameView(props: {
     onDestinationClick,
     onBackgroundClick,
     onForfeitPendingDice,
+    onReturnToLobby,
   } = props;
 
   const uiState = useMemo(() => mapGameStateToUI(gameState), [gameState]);
@@ -901,6 +924,7 @@ function GameView(props: {
       ? mixHexColors(diceColor, "#ffffff", 0.18)
       : mixHexColors(diceColor, "#ffffff", 0.5);
   const rollButtonText = getReadableTextColor(rollButtonBackground);
+  const ownerDisplay = isOwner ? `${playerId || "-"}` : "-";
 
   return (
     <div
@@ -935,6 +959,10 @@ function GameView(props: {
 
           <div style={{ marginBottom: "6px" }}>
             <b>Player:</b> {playerId || "-"}
+          </div>
+
+          <div style={{ marginBottom: "6px" }}>
+            <b>Owner:</b> {ownerDisplay}
           </div>
 
           {showTeamRows ? (
@@ -1040,7 +1068,7 @@ function GameView(props: {
 
                 <button
                   onClick={onRoll}
-                  disabled={!connected || !isCurrentPlayerTurn || effectiveExpectedRollCount === 0}
+                  disabled={!connected || !isCurrentPlayerTurn || effectiveExpectedRollCount === 0 || !!gameOverResult}
                   style={{
                     minWidth: "64px",
                     height: "42px",
@@ -1067,7 +1095,6 @@ function GameView(props: {
 
           {effectivePendingDice.length > 0 ? (
             <div style={{ marginBottom: "10px" }}>
-              
               <span style={{ display: "inline-flex", alignItems: "center", gap: "8px", flexWrap: "wrap", verticalAlign: "middle" }}>
                 {effectivePendingDice.map((die, index) => {
                   const dieValue = String(die.value);
@@ -1077,7 +1104,7 @@ function GameView(props: {
                     <button
                       key={`${die.value}-${index}`}
                       onClick={() => onSelectDie(dieValue)}
-                      disabled={!connected}
+                      disabled={!connected || !!gameOverResult}
                       style={{
                         ...getDieShellStyle(diceColor, !connected),
                         cursor: connected ? "pointer" : "default",
@@ -1103,6 +1130,7 @@ function GameView(props: {
             {canForfeitPendingDice ? (
               <button
                 onClick={onForfeitPendingDice}
+                disabled={!!gameOverResult}
                 style={{
                   height: "32px",
                   borderRadius: "8px",
@@ -1123,15 +1151,85 @@ function GameView(props: {
         <BoardRenderer
           arms={arms}
           pegPlacements={pegPlacements}
-          movablePegIds={movablePegIds}
-          focusedPegId={selectedPegId ?? ""}
+          movablePegIds={gameOverResult ? [] : movablePegIds}
+          focusedPegId={gameOverResult ? "" : selectedPegId ?? ""}
           armColors={armColors}
           arrowIndicators={[]}
-          destinationHighlights={destinationHighlights}
-          onPegClick={onPegClick}
-          onDestinationClick={onDestinationClick}
-          onBackgroundClick={onBackgroundClick}
+          destinationHighlights={gameOverResult ? [] : destinationHighlights}
+          onPegClick={gameOverResult ? () => {} : onPegClick}
+          onDestinationClick={gameOverResult ? () => {} : onDestinationClick}
+          onBackgroundClick={gameOverResult ? () => {} : onBackgroundClick}
         />
+
+        {gameOverResult ? (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 20,
+              background: "rgba(0, 0, 0, 0.55)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <div
+              style={{
+                minWidth: "320px",
+                maxWidth: "420px",
+                padding: "20px",
+                borderRadius: "12px",
+                border: "1px solid #555",
+                background: "#ffffff",
+                boxShadow: "0 8px 24px rgba(0,0,0,0.28)",
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: "26px", fontWeight: 800, marginBottom: "14px" }}>
+                GAME OVER!
+              </div>
+
+              {gameOverResult.mode === "solo" ? (
+                <div style={{ marginBottom: "16px" }}>
+                  <div style={{ fontWeight: 700, marginBottom: "6px" }}>Winner</div>
+                  <div>
+                    <span style={{ color: gameOverResult.winner.color, fontWeight: 700 }}>
+                      {gameOverResult.winner.name}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ marginBottom: "16px" }}>
+                  <div style={{ fontWeight: 700, marginBottom: "6px" }}>Winning Team</div>
+                  {gameOverResult.winners.map((winner) => (
+                    <div key={winner.playerId} style={{ marginBottom: "4px" }}>
+                      <span style={{ color: winner.color, fontWeight: 700 }}>
+                        {winner.name}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                onClick={onReturnToLobby}
+                disabled={!isOwner}
+                style={{
+                  height: "38px",
+                  minWidth: "150px",
+                  borderRadius: "8px",
+                  border: "1px solid #444",
+                  background: isOwner ? "#ececec" : "#d0d0d0",
+                  color: "#111111",
+                  fontWeight: 700,
+                  cursor: isOwner ? "pointer" : "default",
+                }}
+              >
+                Return to Lobby
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div
@@ -1211,7 +1309,6 @@ function GameView(props: {
 }
 
 export default function App() {
-
   const wsRef = useRef<WebSocket | null>(null);
 
   const [connected, setConnected] = useState(false);
@@ -1222,6 +1319,7 @@ export default function App() {
   const [joinedRoom, setJoinedRoom] = useState(false);
   const [lobby, setLobby] = useState<LobbyViewState | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
+  const [gameOverResult, setGameOverResult] = useState<GameOverResult | null>(null);
   const [selectedDie, setSelectedDie] = useState("");
   const [pendingDice, setPendingDice] = useState<PendingDieView[]>([]);
   const [bankedDice, setBankedDice] = useState(0);
@@ -1258,6 +1356,7 @@ export default function App() {
           setStoredRoomCode(message.roomCode);
         }
         setJoinedRoom(true);
+        setGameOverResult(null);
         setLatestStatusText(`Joined room ${typeof message.roomCode === "string" ? message.roomCode : ""}`.trim());
       }
 
@@ -1272,6 +1371,7 @@ export default function App() {
             setStoredRoomCode(parsedLobby.roomCode);
           }
         }
+        setGameOverResult(null);
         setLatestStatusText("Lobby synchronized");
       }
 
@@ -1306,6 +1406,63 @@ export default function App() {
         }
 
         setLatestStatusText("Game state synchronized");
+      }
+
+      if (message.type === "gameOver") {
+        const result = message.result;
+        if (isObject(result) && result.mode === "solo" && isObject(result.winner)) {
+          const winner = result.winner;
+          if (
+            typeof winner.playerId === "string" &&
+            typeof winner.name === "string"
+          ) {
+            const fallbackSeat = Number(String(winner.playerId).replace(/^p/, ""));
+            const fallbackColor =
+              Number.isInteger(fallbackSeat) && fallbackSeat >= 0
+                ? getColorForSeat(fallbackSeat)
+                : getColorForSeat(0);
+
+            setGameOverResult({
+              mode: "solo",
+              winner: {
+                playerId: winner.playerId,
+                name: winner.name,
+                color: typeof winner.color === "string" && winner.color.trim() ? winner.color : fallbackColor,
+              },
+            });
+          }
+        } else if (isObject(result) && result.mode === "team" && Array.isArray(result.winners)) {
+          const winners = result.winners
+            .map((winner) => {
+              if (!isObject(winner)) return null;
+              if (
+                typeof winner.playerId !== "string" ||
+                typeof winner.name !== "string"
+              ) {
+                return null;
+              }
+
+              const fallbackSeat = Number(String(winner.playerId).replace(/^p/, ""));
+              const fallbackColor =
+                Number.isInteger(fallbackSeat) && fallbackSeat >= 0
+                  ? getColorForSeat(fallbackSeat)
+                  : getColorForSeat(0);
+
+              return {
+                playerId: winner.playerId,
+                name: winner.name,
+                color:
+                  typeof winner.color === "string" && winner.color.trim() ? winner.color : fallbackColor,
+              };
+            })
+            .filter((winner): winner is { playerId: string; name: string; color: string } => !!winner);
+
+          setGameOverResult({
+            mode: "team",
+            winners,
+          });
+        }
+        setLatestStatusText("Game Over");
       }
 
       if (message.type === "legalMoves") {
@@ -1423,7 +1580,7 @@ export default function App() {
         setSelectedDie(onlyDie);
         setSelectedPegId(null);
 
-        if (gameState) {
+        if (gameState && !gameOverResult) {
           const currentTurnPlayerId = getCurrentTurnPlayerId(gameState);
           const onlyDieControllerId = pendingDice[0]?.controllerId ?? null;
           const actingActorId =
@@ -1451,11 +1608,19 @@ export default function App() {
     if (!stillValid) {
       setSelectedDie("");
     }
-  }, [pendingDice, selectedDie, gameState, playerId]);
+  }, [pendingDice, selectedDie, gameState, playerId, gameOverResult]);
 
   const selectedDieControllerId = getPendingDieControllerId(pendingDice, selectedDie);
 
+  const isOwner = useMemo(() => {
+    if (!lobby || !playerId) return false;
+    const sorted = [...lobby.players].sort((a, b) => a.seat - b.seat);
+    return sorted.length > 0 && sorted[0].playerId === playerId;
+  }, [lobby, playerId]);
+
   const handleSelectDie = (dieValue: string) => {
+    if (gameOverResult) return;
+
     setSelectedDie(dieValue);
     setSelectedPegId(null);
 
@@ -1496,6 +1661,7 @@ export default function App() {
     setJoinedRoom(false);
     setLobby(null);
     setGameState(null);
+    setGameOverResult(null);
     setPendingDice([]);
     setBankedDice(0);
     setExpectedRollCount(0);
@@ -1519,6 +1685,7 @@ export default function App() {
     setJoinedRoom(false);
     setLobby(null);
     setGameState(null);
+    setGameOverResult(null);
     setPendingDice([]);
     setBankedDice(0);
     setExpectedRollCount(0);
@@ -1568,7 +1735,7 @@ export default function App() {
   };
 
   const handleRoll = () => {
-    if (!gameState) return;
+    if (!gameState || gameOverResult) return;
 
     const currentTurnPlayerId = getCurrentTurnPlayerId(gameState);
     if (!currentTurnPlayerId || currentTurnPlayerId !== playerId) return;
@@ -1598,7 +1765,7 @@ export default function App() {
   };
 
   const handleForfeitPendingDice = () => {
-    if (!gameState) return;
+    if (!gameState || gameOverResult) return;
 
     const currentTurnPlayerId = getCurrentTurnPlayerId(gameState);
     if (!currentTurnPlayerId || currentTurnPlayerId !== playerId) return;
@@ -1609,14 +1776,20 @@ export default function App() {
     });
   };
 
+  const handleReturnToLobby = () => {
+    if (!isOwner) return;
+    sendMessage(wsRef.current, { type: "ackGameOver" });
+  };
+
   const movablePegIds = useMemo(
-    () => getMovablePegIds(legalMoveOptions, selectedDie),
-    [legalMoveOptions, selectedDie]
+    () => (gameOverResult ? [] : getMovablePegIds(legalMoveOptions, selectedDie)),
+    [legalMoveOptions, selectedDie, gameOverResult]
   );
 
   const destinationHighlights = useMemo(() => {
     if (!gameState) return [];
     if (!selectedPegId) return [];
+    if (gameOverResult) return [];
     const fallbackPlayerId = playerId || getCurrentTurnPlayerId(gameState);
     return buildDestinationHighlights(
       legalMoveOptions,
@@ -1625,18 +1798,20 @@ export default function App() {
       fallbackPlayerId,
       normalizeArms(gameState.config.playerCount)
     );
-  }, [gameState, legalMoveOptions, selectedDie, selectedPegId, playerId]);
+  }, [gameState, legalMoveOptions, selectedDie, selectedPegId, playerId, gameOverResult]);
 
   const handlePegClick = (pegId: string) => {
+    if (gameOverResult) return;
     setSelectedPegId((current) => (current === pegId ? null : pegId));
   };
 
   const handleBackgroundClick = () => {
+    if (gameOverResult) return;
     setSelectedPegId(null);
   };
 
   const handleDestinationClick = (hole: BoardHolePlacement) => {
-    if (!gameState) return;
+    if (!gameState || gameOverResult) return;
 
     const currentTurnPlayerId = getCurrentTurnPlayerId(gameState);
     const actingActorId =
@@ -1690,6 +1865,7 @@ export default function App() {
 
   const canForfeitPendingDice =
     !!gameState &&
+    !gameOverResult &&
     playerId !== "" &&
     playerId === getCurrentTurnPlayerId(gameState) &&
     pendingDice.length > 0 &&
@@ -1705,7 +1881,7 @@ export default function App() {
     }
   }, [rawLegalMoves]);
 
-  if (phase === "active" && gameState) {
+  if (gameState && (phase === "active" || phase === "ended" || gameOverResult !== null)) {
     return (
       <GameView
         connected={connected}
@@ -1727,6 +1903,8 @@ export default function App() {
         selectedPegId={selectedPegId}
         firstLegalMoveRaw={firstLegalMoveRaw}
         canForfeitPendingDice={canForfeitPendingDice}
+        gameOverResult={gameOverResult}
+        isOwner={isOwner}
         onRollValueChange={handleRollValueChange}
         onRoll={handleRoll}
         onSelectDie={handleSelectDie}
@@ -1734,6 +1912,7 @@ export default function App() {
         onDestinationClick={handleDestinationClick}
         onBackgroundClick={handleBackgroundClick}
         onForfeitPendingDice={handleForfeitPendingDice}
+        onReturnToLobby={handleReturnToLobby}
       />
     );
   }

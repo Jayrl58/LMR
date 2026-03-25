@@ -29,11 +29,11 @@ npm run dev:server
 
 Server Runtime Endpoints:
 
-WebSocket server
-ws://127.0.0.1:8787
+WebSocket server  
+ws://127.0.0.1:8787  
 
-HTTP console
-http://127.0.0.1:8788
+HTTP console  
+http://127.0.0.1:8788  
 
 Architecture Notes:
 
@@ -48,48 +48,17 @@ Playpen/board_geometry/boardGeometry.ts
 
 ---
 
-## Last Session Accomplishments (2026-03-24)
+## Last Session Accomplishments (2026-03-25)
 
-### M8 Foundation Validation — Team Play Completion
+### M8 — Results & Post-Game Flow (Completed)
 
-• Fixed **delegated dice control pipeline**
-  - Preserved `pendingDice` structure in wsServer
-  - Restored `controllerId` end-to-end
-  - Eliminated die ownership loss
-
-• Implemented **automatic delegation rule**
-  - Finished player delegates remaining dice immediately
-  - No manual assignment required
-
-• Fixed **server crash condition**
-  - Corrected `actorFinished` initialization ordering
-
-• Restored **no-legal-moves contract**
-  - Explicit player acknowledgment required
-  - Eliminated silent auto-pass behavior
-
-• Fixed **client-side delegated die control**
-  - UI now respects `controllerId` instead of turn owner
-  - Legal move requests routed correctly
-
-• Validated **team victory condition**
-  - First team to fully finish → immediate game end
-  - No continuation after team completion
-
-• Verified **end-of-game transition**
-  - Game exits cleanly to lobby state
-  - No state corruption or lingering turn data
-
----
-
-### Result
-
-• Team play loop fully validated  
-• Delegation model stable  
-• No-legal-moves behavior correct  
-• Game completion logic confirmed  
-
-→ **M8 foundation established**
+• Implemented on-board **Results Overlay**  
+• Implemented `gameOver` server message  
+• Implemented `ackGameOver` client acknowledgment  
+• Implemented **owner-controlled return to lobby**  
+• Removed automatic lobby return  
+• Removed rematch from scope  
+• Validated **solo and team flows end-to-end**  
 
 ---
 
@@ -98,56 +67,80 @@ Playpen/board_geometry/boardGeometry.ts
 Stable baseline (must be preserved):
 
 • App.tsx  
-  - Delegated die control (controllerId-based)  
-  - Stable move execution pipeline  
-  - No-legal-moves gating restored  
+  - WebSocket lifecycle stabilized (no reconnect loop)  
+  - Correct gameOver payload mapping  
+  - Results overlay fully functional  
+  - Proper phase gating (active + ended)  
 
 • handleMessage.ts  
-  - Delegation logic fixed  
-  - actorFinished ordering corrected  
-  - No auto-forfeit behavior  
+  - Delegation logic stable  
+  - No-legal-moves contract working  
+  - Team delegation validated  
 
 • wsServer.ts  
-  - pendingDice structure preserved (no flattening)  
-  - stateSync now includes controllerId  
+  - gameOver emission implemented  
+  - ackGameOver wired correctly  
+  - No auto-reset to lobby  
+  - Pending dice structure preserved  
 
 System status:
 
 • Multiplayer gameplay loop fully stable  
-• Team play functioning end-to-end  
-• Delegated dice working correctly  
-• End-of-game detection verified  
-• Lobby transition clean and consistent  
+• Team play fully validated  
+• Delegation working correctly  
+• End-of-game flow complete  
+• Post-game return to lobby controlled by owner  
+
+---
+
+## Active Focus Shift
+
+Next milestone focus:
+
+### M5 — Player Entry & Access (Refinement)
+
+Goal:
+
+Make the system usable for **external players**, not just internal testing.
 
 ---
 
 ## Next Action
 
-### M8 — Game Completion & Results (Continuation)
+### M5 — Entry Flow Definition (START HERE NEXT SESSION)
 
-Objective:
-
-Implement player-facing end-of-game experience.
+Define the exact external player experience before coding.
 
 ---
 
 ### Immediate Task
 
-Implement **Results Presentation Layer**
+Decide:
 
-Accomplishes:
-• Display winning team / player  
-• Show finish order  
-• Provide clear end-of-game feedback  
-
-Impact:
-• UI layer only (server logic already validated)
+• Player naming rule:
+  - optional on join  
+  - required before Ready  (recommended baseline)
 
 ---
 
-### Recommendation
+### Follow-on Scope (DO NOT IMPLEMENT YET)
 
-Proceed with results UI before expanding additional rules.
+• Room join clarity (code entry UX)  
+• Player identity display in lobby  
+• Owner visibility clarity  
+• Reconnect expectations  
+• External usability validation  
+
+---
+
+## Constraints (CRITICAL)
+
+Do NOT:
+
+• Modify core gameplay loop  
+• Introduce rematch logic  
+• Add player communication yet  
+• Change server authority model  
 
 ---
 
@@ -155,20 +148,18 @@ Proceed with results UI before expanding additional rules.
 
 At next session start:
 
-1. Confirm baseline:
+1. Confirm baseline stability:
+   - Run server
+   - Join room (2 clients)
+   - Verify full game → results → return to lobby
 
-   • App.tsx = delegated-die stable version  
-   • handleMessage.ts = delegation + no-legal-moves fix version  
-   • wsServer.ts = pendingDice preservation version  
+2. Begin with:
+   → Player naming decision (M5)
 
-2. Start with:
-   → Results presentation UI (M8 continuation)
-
-3. Do NOT revisit:
-
-   • Delegation logic  
-   • No-legal-moves handling  
-   • pendingDice structure  
+3. Do NOT touch:
+   - delegation logic  
+   - dice system  
+   - results flow  
 
 Unless regression is observed  
 
@@ -176,11 +167,11 @@ Unless regression is observed
 
 ## Explicit Stop Condition
 
-Do NOT modify server or UI core logic unless:
+Stop immediately if:
 
-• delegated dice lose controllerId  
-• teammate cannot act on delegated dice  
-• no-legal-moves button fails to appear  
-• game does not end on full team completion  
+• Join flow breaks  
+• Lobby state desync occurs  
+• Game no longer reaches gameOver correctly  
+• Return-to-lobby fails  
 
-Otherwise proceed forward.
+Otherwise proceed

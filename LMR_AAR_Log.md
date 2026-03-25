@@ -85,3 +85,62 @@ to prevent recurrence.
 "Never discard critical state fields across system boundaries. If behavior does not change after multiple fixes, the wrong layer is being modified."
 
 ------------------------------------------------------------------------
+
+## 2026-03-25 --- Results Flow Integration & Contract Discipline
+
+### What went well
+
+• Strict step-by-step isolation exposed issues quickly  
+• Multi-window testing (solo + team) validated full flow  
+• Server-authoritative transitions prevented hidden UI state bugs  
+• Clear separation of responsibilities (server = truth, UI = presentation)  
+
+------------------------------------------------------------------------
+
+### What did not work well
+
+• Partial edits and non–full-file updates caused structural breakage  
+• Multiple simultaneous changes (server + UI) obscured root causes  
+• Assumed payload shapes (UI vs server mismatch) created silent failures  
+• WebSocket lifecycle bug (reconnect on state change) introduced hidden desync  
+
+------------------------------------------------------------------------
+
+### Process corrections
+
+• Enforce **Full File Replacement Rule**  
+→ Never issue partial edits or inline patch instructions  
+→ Always replace entire file to maintain structural integrity  
+
+• Enforce **Contract Verification Step**  
+→ Validate server payload shape before implementing UI handling  
+→ Never assume payload structure  
+
+• Enforce **Single-Layer Change Discipline**  
+→ Modify server OR UI, never both simultaneously  
+→ Verify each layer independently before proceeding  
+
+• Enforce **Connection Stability Awareness**  
+→ Avoid unintended WebSocket reinitialization tied to state changes  
+→ Treat connection lifecycle as critical system component  
+
+------------------------------------------------------------------------
+
+### Outcome
+
+• Root cause cluster:
+  - UI expected incorrect `gameOver` payload shape  
+  - WebSocket reconnected on state change, losing room context  
+  - Render gating incorrectly tied to `phase === active` only  
+
+• Fixes:
+  - Correct payload mapping (server → UI contract alignment)  
+  - Stabilized WebSocket lifecycle (removed dependency loop)  
+  - Updated render gating to support `ended` phase  
+  - Implemented owner-controlled post-game flow  
+
+• Reinforced rule:
+
+"Always validate contracts before rendering. If behavior disappears without errors, assume a contract mismatch or lifecycle issue."
+
+------------------------------------------------------------------------
