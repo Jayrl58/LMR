@@ -6,7 +6,7 @@ import BoardRenderer, {
 } from "./components/BoardRenderer";
 import { mapGameStateToUI } from "../../src/ui/mapGameStateToUI";
 import { mapPositionToBoardHole } from "../../src/ui/mapPositionToBoardHole";
-import type { LobbyViewState, PendingDieView, LegalMoveOption, SupportedArms } from "./app/parsers";
+import type { LobbyGameConfigView, LobbyViewState, PendingDieView, LegalMoveOption, SupportedArms } from "./app/parsers";
 import type { GameState } from "../../src/types";
 import { PLAYER_COLOR_PALETTE } from "./constants/playerColors";
 import {
@@ -16,17 +16,11 @@ import {
   type GameOverResult,
   useClientSession,
 } from "./app/useClientSession";
+import { useLobbyController, type LobbySeatRow } from "./app/useLobbyController";
 
 
 
 
-type LobbySeatRow = {
-  seat: number;
-  color: string;
-  playerId: string;
-  ready: boolean;
-  occupied: boolean;
-};
 
 
 
@@ -34,7 +28,6 @@ type RawLegalMove = unknown;
 
 type ParsedMove = Record<string, unknown>;
 
-const MAX_LOBBY_SEATS = 8;
 const PLAYER_COUNT_OPTIONS = [4, 6, 8] as const;
 const DEBUG_HIGHLIGHT_COLOR = "#ff00ff";
 
@@ -216,23 +209,6 @@ function computeExpectedRollCountForUi(gameState: GameState, turnOverride?: unkn
   return 0;
 }
 
-function buildLobbySeatRows(lobby: LobbyViewState | null): LobbySeatRow[] {
-  const playerBySeat = new Map<number, LobbyPlayerView>();
-  (lobby?.players ?? []).forEach((player) => {
-    playerBySeat.set(player.seat, player);
-  });
-
-  return Array.from({ length: MAX_LOBBY_SEATS }, (_, seat) => {
-    const player = playerBySeat.get(seat);
-    return {
-      seat,
-      color: getColorForSeat(seat),
-      playerId: player?.playerId ?? "",
-      ready: player?.ready ?? false,
-      occupied: !!player,
-    };
-  });
-}
 
 function parseDiceList(value: unknown): number[] {
   if (!Array.isArray(value)) return [];
@@ -500,8 +476,8 @@ function buildDestinationHighlights(
 
     byKey.set(key, {
       hole: destinationHole,
-      color: DEBUG_HIGHLIGHT_COLOR,
-    });
+      color: DEBUG_HIGHLIGHT_COLOR
+  });
   });
 
   return Array.from(byKey.values());
@@ -548,6 +524,7 @@ function LobbyView(props: {
   roomCodeInput: string;
   joinedRoom: boolean;
   lobby: LobbyViewState | null;
+  seatRows: LobbySeatRow[];
   onRoomCodeInputChange: (value: string) => void;
   onCreateRoom: () => void;
   onJoinRoom: () => void;
@@ -564,6 +541,7 @@ function LobbyView(props: {
     roomCodeInput,
     joinedRoom,
     lobby,
+    seatRows,
     onRoomCodeInputChange,
     onCreateRoom,
     onJoinRoom,
@@ -573,7 +551,6 @@ function LobbyView(props: {
     onUpdateGameConfig,
   } = props;
 
-  const seatRows = useMemo(() => buildLobbySeatRows(lobby), [lobby]);
   const seatedCount = seatRows.filter((row) => row.occupied).length;
   const expectedCount = lobby?.expectedPlayerCount;
   const gameConfig = lobby?.gameConfig ?? {};
@@ -1280,8 +1257,40 @@ export default function App() {
     setRawLegalMoves,
     setSelectedPegId,
     setLatestMessageType,
-    setLatestStatusText,
+    setLatestStatusText
   });
+
+  const {
+    seatRows,
+    handleCreateRoom,
+    handleJoinRoom,
+    handleReady,
+    handleNotReady,
+    handleStartGame,
+    handleUpdateGameConfig,
+  } = useLobbyController({
+    wsRef,
+    lobby,
+    roomCodeInput,
+    setPlayerId,
+    setPhase,
+    setRoomCode,
+    setJoinedRoom,
+    setLobby,
+    setGameState,
+    setGameOverResult,
+    setPendingDice,
+    setBankedDice,
+    setExpectedRollCount,
+    setRollValues,
+    setLocalRolledDice,
+    setLegalMoveOptions,
+    setRawLegalMoves,
+    setSelectedDie,
+    setSelectedPegId,
+    getColorForSeat,
+  });
+
 
 
 
@@ -1307,8 +1316,8 @@ export default function App() {
               sendMessage(wsRef.current, {
                 type: "getLegalMoves",
                 actorId: actingActorId,
-                die: parsedDie,
-              });
+                die: parsedDie
+  });
             }
           }
         }
@@ -1354,8 +1363,8 @@ export default function App() {
     sendMessage(wsRef.current, {
       type: "getLegalMoves",
       actorId: actingActorId,
-      die: parsedDie,
-    });
+      die: parsedDie
+  });
   };
 
   const handleRollValueChange = (index: number, value: string) => {
@@ -1367,85 +1376,11 @@ export default function App() {
     });
   };
 
-  const handleCreateRoom = () => {
-    setPlayerId("");
-    setPhase("lobby");
-    setRoomCode("");
-    setJoinedRoom(false);
-    setLobby(null);
-    setGameState(null);
-    setGameOverResult(null);
-    setPendingDice([]);
-    setBankedDice(0);
-    setExpectedRollCount(0);
-    setRollValues([]);
-    setLocalRolledDice([]);
-    setLegalMoveOptions([]);
-    setRawLegalMoves([]);
-    setSelectedDie("");
-    setSelectedPegId(null);
-    setStoredRoomCode("");
-    sendMessage(wsRef.current, { type: "joinRoom" });
-  };
 
-  const handleJoinRoom = () => {
-    const trimmed = roomCodeInput.trim().toUpperCase();
-    if (!trimmed) return;
 
-    setPlayerId("");
-    setPhase("lobby");
-    setRoomCode(trimmed);
-    setJoinedRoom(false);
-    setLobby(null);
-    setGameState(null);
-    setGameOverResult(null);
-    setPendingDice([]);
-    setBankedDice(0);
-    setExpectedRollCount(0);
-    setRollValues([]);
-    setLocalRolledDice([]);
-    setLegalMoveOptions([]);
-    setRawLegalMoves([]);
-    setSelectedDie("");
-    setSelectedPegId(null);
-    setStoredRoomCode(trimmed);
-    sendMessage(wsRef.current, { type: "joinRoom", roomCode: trimmed });
-  };
 
-  const handleReady = () => {
-    sendMessage(wsRef.current, { type: "setReady", ready: true });
-  };
 
-  const handleNotReady = () => {
-    sendMessage(wsRef.current, { type: "setReady", ready: false });
-  };
 
-  const handleStartGame = () => {
-    const playerCount =
-      lobby?.gameConfig?.playerCount ??
-      lobby?.expectedPlayerCount ??
-      Math.max(lobby?.players.length ?? 0, 4);
-
-    sendMessage(wsRef.current, { type: "startGame", playerCount });
-  };
-
-  const handleUpdateGameConfig = (patch: Partial<LobbyGameConfigView>) => {
-    const seatedCount = lobby?.players.length ?? 0;
-    const playerCount =
-      patch.playerCount ??
-      lobby?.gameConfig?.playerCount ??
-      lobby?.expectedPlayerCount ??
-      Math.max(seatedCount, 4);
-
-    sendMessage(wsRef.current, {
-      type: "setLobbyGameConfig",
-      gameConfig: {
-        playerCount,
-        ...(lobby?.gameConfig ?? {}),
-        ...patch,
-      },
-    });
-  };
 
   const handleRoll = () => {
     if (!gameState || gameOverResult) return;
@@ -1465,16 +1400,16 @@ export default function App() {
       sendMessage(wsRef.current, {
         type: "roll",
         actorId: currentTurnPlayerId,
-        die: dice[0],
-      });
+        die: dice[0]
+  });
       return;
     }
 
     sendMessage(wsRef.current, {
       type: "roll",
       actorId: currentTurnPlayerId,
-      dice,
-    });
+      dice
+  });
   };
 
   const handleForfeitPendingDice = () => {
@@ -1485,8 +1420,8 @@ export default function App() {
 
     sendMessage(wsRef.current, {
       type: "forfeitPendingDie",
-      actorId: currentTurnPlayerId,
-    });
+      actorId: currentTurnPlayerId
+  });
   };
 
   const handleReturnToLobby = () => {
@@ -1568,8 +1503,8 @@ export default function App() {
       type: "move",
       actorId: actingActorId,
       dice: [Number(selectedDie)],
-      move: parsedMove,
-    });
+      move: parsedMove
+  });
     setSelectedPegId(null);
   };
 
@@ -1639,6 +1574,7 @@ export default function App() {
       roomCodeInput={roomCodeInput}
       joinedRoom={joinedRoom}
       lobby={lobby}
+      seatRows={seatRows}
       onRoomCodeInputChange={setRoomCodeInput}
       onCreateRoom={handleCreateRoom}
       onJoinRoom={handleJoinRoom}
