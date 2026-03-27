@@ -199,6 +199,16 @@ function anyPlayerReady(room: Room): boolean {
   return false;
 }
 
+
+function allConnectedPlayersReady(room: Room): boolean {
+  const players = Array.from(room.clientToPlayer.values());
+  if (players.length === 0) return false;
+  for (const playerId of players) {
+    if (room.readyByPlayer.get(playerId) !== true) return false;
+  }
+  return true;
+}
+
 function computeExpectedTeamsByPlayerId(playerIds: string[]) {
   // Hybrid Option 4 deterministic algorithm locked by contract tests:
   // - order by playerId ascending
@@ -1021,6 +1031,10 @@ if (msg.type === "setReady") {
         if (room.phase === "active") {
           // Already started: reject (idempotent clients should treat this as a no-op).
           send(ws, makeError("BAD_MESSAGE", "startGame is not allowed once game has started.", reqId));
+          return;
+        }
+        if (!allConnectedPlayersReady(room)) {
+          send(ws, makeError("BAD_MESSAGE", "All players must be ready before the game can start.", reqId));
           return;
         }
         const pc = Number((msg as any).playerCount);

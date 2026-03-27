@@ -552,6 +552,7 @@ function LobbyView(props: {
   } = props;
 
   const seatedCount = seatRows.filter((row) => row.occupied).length;
+  const allSeatedReady = seatedCount > 0 && seatRows.filter((row) => row.occupied).every((row) => row.ready);
   const expectedCount = lobby?.expectedPlayerCount;
   const gameConfig = lobby?.gameConfig ?? {};
   const selectedPlayerCount =
@@ -595,7 +596,7 @@ function LobbyView(props: {
             <button onClick={onNotReady} disabled={!connected}>
               Not Ready
             </button>
-            <button onClick={onStartGame} disabled={!connected || seatedCount === 0}>
+            <button onClick={onStartGame} disabled={!connected || seatedCount === 0 || !allSeatedReady}>
               Start Game
             </button>
           </div>
