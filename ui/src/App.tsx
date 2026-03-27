@@ -625,6 +625,7 @@ function LobbyView(props: {
   onToggleReady: (ready: boolean) => void;
   onStartGame: () => void;
   onUpdateGameConfig: (patch: Partial<LobbyGameConfigView>) => void;
+  isOwner: boolean;
 }) {
   const {
     connected,
@@ -640,6 +641,7 @@ function LobbyView(props: {
     onToggleReady,
     onStartGame,
     onUpdateGameConfig,
+    isOwner,
   } = props;
 
   const seatRows = useMemo(() => buildLobbySeatRows(lobby), [lobby]);
@@ -684,170 +686,211 @@ function LobbyView(props: {
 
       {joinedRoom && (
         <>
-          <div style={{ margin: "10px 0", display: "flex", gap: "8px" }}>
-            <button onClick={onStartGame} disabled={!canStartGame}>
-              Start Game
-            </button>
-          </div>
-
-          {!isRoomFull ? (
-            <div style={{ marginBottom: "12px", color: "#333" }}>
-              Room must be full to start.
-            </div>
-          ) : !allSeatedReady && seatedCount > 0 ? (
-            <div style={{ marginBottom: "12px", color: "#333" }}>
-              All players must be ready to start.
-            </div>
-          ) : null}
-
           <div style={{ marginBottom: "12px" }}>
             <b>Players:</b> {seatedCount} / {selectedPlayerCount}
           </div>
 
           <div
-            style={{ marginBottom: "12px", padding: "10px", border: "1px solid #666", width: "fit-content" }}
+            style={{
+              display: "flex",
+              gap: "24px",
+              alignItems: "flex-start",
+              marginBottom: "12px",
+              flexWrap: "wrap",
+            }}
           >
-            <div style={{ marginBottom: "8px" }}>
-              <b>Pre-Game Options</b>
+            <div
+              style={{
+                padding: "10px",
+                border: "1px solid #666",
+                width: "fit-content",
+                minWidth: "460px",
+              }}
+            >
+              <div style={{ marginBottom: "6px" }}>
+                <b>Lobby Seats</b>
+              </div>
+
+              <table style={{ borderCollapse: "collapse", minWidth: "460px" }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #666" }}>Seat</th>
+                    <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #666" }}>Color</th>
+                    <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #666", width: "12ch" }}>Player</th>
+                    <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #666" }}>Team</th>
+                    <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #666" }}>Ready</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {seatRows.map((row) => {
+                    const isCurrentPlayer = row.playerId !== "" && row.playerId === playerId;
+                    const isSeatEnabled = row.seat < selectedPlayerCount;
+                    const rowIsUnavailable = !isSeatEnabled;
+
+                    return (
+                      <tr
+                        key={row.seat}
+                        style={{
+                          backgroundColor: rowIsUnavailable
+                            ? "rgba(0,0,0,0.06)"
+                            : isCurrentPlayer
+                              ? "rgba(255,255,255,0.08)"
+                              : undefined,
+                          fontWeight: isCurrentPlayer ? "bold" : undefined,
+                          color: rowIsUnavailable ? "#777" : undefined,
+                        }}
+                      >
+                        <td style={{ padding: "4px 8px", borderBottom: "1px solid #333" }}>
+                          {row.seat === ownerSeat ? "👑" : row.seat}
+                        </td>
+                        <td style={{ padding: "4px 8px", borderBottom: "1px solid #333" }}>
+                          {rowIsUnavailable ? (
+                            <span style={{ color: "#777" }}>-</span>
+                          ) : (
+                            <span style={{ color: row.color, fontWeight: "bold" }}>{row.color}</span>
+                          )}
+                        </td>
+                        <td
+                          style={{
+                            padding: "4px 8px",
+                            borderBottom: "1px solid #333",
+                            width: "12ch",
+                            minWidth: "12ch",
+                            maxWidth: "12ch",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {rowIsUnavailable ? "Unavailable" : row.occupied ? row.playerId : "Empty"}
+                        </td>
+                        <td style={{ padding: "4px 8px", borderBottom: "1px solid #333" }}>
+                          {rowIsUnavailable ? "-" : "—"}
+                        </td>
+                        <td style={{ padding: "4px 8px", borderBottom: "1px solid #333" }}>
+                          {rowIsUnavailable ? (
+                            "-"
+                          ) : isCurrentPlayer ? (
+                            <input
+                              type="checkbox"
+                              checked={row.ready}
+                              onChange={(e) => onToggleReady(e.target.checked)}
+                              disabled={!connected || !row.occupied}
+                            />
+                          ) : row.occupied ? (
+                            row.ready ? "✔" : "—"
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
 
-            <label style={{ display: "block", marginBottom: "10px" }}>
-              <span style={{ marginRight: "8px" }}>Player Count</span>
-              <select
-                value={String(selectedPlayerCount)}
-                onChange={(e) => onUpdateGameConfig({ playerCount: Number(e.target.value) })}
-                disabled={!connected}
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div
+                style={{ padding: "10px", border: "1px solid #666", width: "fit-content", minWidth: "220px" }}
               >
-                {PLAYER_COUNT_OPTIONS.map((count) => (
-                  <option key={count} value={count}>
-                    {count}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <div style={{ marginBottom: "8px" }}>
+                  <b>Pre-Game Options</b>
+                </div>
 
-            <label style={{ display: "block", marginBottom: "6px" }}>
-              <input
-                type="checkbox"
-                checked={!!gameConfig.teamPlay}
-                onChange={(e) => onUpdateGameConfig({ teamPlay: e.target.checked })}
-                disabled={!connected}
-              />{" "}
-              Team Play
-            </label>
+                <label style={{ display: "block", marginBottom: "10px" }}>
+                  <span style={{ marginRight: "8px" }}>Player Count</span>
+                  <select
+                    value={String(selectedPlayerCount)}
+                    onChange={(e) => onUpdateGameConfig({ playerCount: Number(e.target.value) })}
+                    disabled={!connected}
+                  >
+                    {PLAYER_COUNT_OPTIONS.map((count) => (
+                      <option key={count} value={count}>
+                        {count}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-            <label style={{ display: "block", marginBottom: "6px" }}>
-              <input
-                type="checkbox"
-                checked={!!gameConfig.killRoll}
-                onChange={(e) => onUpdateGameConfig({ killRoll: e.target.checked })}
-                disabled={!connected}
-              />{" "}
-              Kill Rules
-            </label>
+                <label style={{ display: "block", marginBottom: "6px" }}>
+                  <input
+                    type="checkbox"
+                    checked={!!gameConfig.teamPlay}
+                    onChange={(e) => onUpdateGameConfig({ teamPlay: e.target.checked })}
+                    disabled={!connected}
+                  />{" "}
+                  Team Play
+                </label>
 
-            <label style={{ display: "block", marginBottom: "6px" }}>
-              <input
-                type="checkbox"
-                checked={!!gameConfig.doubleDice}
-                onChange={(e) => onUpdateGameConfig({ doubleDice: e.target.checked })}
-                disabled={!connected}
-              />{" "}
-              Double Dice
-            </label>
+                <label style={{ display: "block", marginBottom: "6px" }}>
+                  <input
+                    type="checkbox"
+                    checked={!!gameConfig.killRoll}
+                    onChange={(e) => onUpdateGameConfig({ killRoll: e.target.checked })}
+                    disabled={!connected}
+                  />{" "}
+                  Kill Rules
+                </label>
 
-            <label style={{ display: "block", marginBottom: "6px" }}>
-              <input
-                type="checkbox"
-                checked={!!gameConfig.fastTrack}
-                onChange={(e) => onUpdateGameConfig({ fastTrack: e.target.checked })}
-                disabled={!connected}
-              />{" "}
-              Fast Track
-            </label>
-          </div>
+                <label style={{ display: "block", marginBottom: "6px" }}>
+                  <input
+                    type="checkbox"
+                    checked={!!gameConfig.doubleDice}
+                    onChange={(e) => onUpdateGameConfig({ doubleDice: e.target.checked })}
+                    disabled={!connected}
+                  />{" "}
+                  Double Dice
+                </label>
 
-          <div style={{ marginBottom: "6px" }}>
-            <b>Lobby Seats</b>
-          </div>
+                <label style={{ display: "block", marginBottom: "6px" }}>
+                  <input
+                    type="checkbox"
+                    checked={!!gameConfig.fastTrack}
+                    onChange={(e) => onUpdateGameConfig({ fastTrack: e.target.checked })}
+                    disabled={!connected}
+                  />{" "}
+                  Fast Track
+                </label>
+              </div>
 
-          <table style={{ borderCollapse: "collapse", minWidth: "460px" }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #666" }}>Seat</th>
-                <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #666" }}>Color</th>
-                <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #666", width: "12ch" }}>Player</th>
-                <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #666" }}>Team</th>
-                <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #666" }}>Ready</th>
-              </tr>
-            </thead>
-            <tbody>
-              {seatRows.map((row) => {
-                const isCurrentPlayer = row.playerId !== "" && row.playerId === playerId;
-                const isSeatEnabled = row.seat < selectedPlayerCount;
-                const rowIsUnavailable = !isSeatEnabled;
+              <div
+                style={{ padding: "10px", border: "1px solid #666", width: "fit-content", minWidth: "220px" }}
+              >
+                <div style={{ marginBottom: "8px" }}>
+                  <b>Start</b>
+                </div>
 
-                return (
-                  <tr
-                    key={row.seat}
+                <button
+                  onClick={onStartGame}
+                  disabled={!(canStartGame && isOwner)}
+                  style={{
+                    color: canStartGame && isOwner ? "green" : undefined,
+                    fontWeight: canStartGame && isOwner ? 700 : undefined,
+                    backgroundColor: canStartGame && isOwner ? "#e6ffe6" : undefined,
+                    borderColor: canStartGame && isOwner ? "green" : undefined,
+                  }}
+                >
+                  Start Game
+                </button>
+
+                {!canStartGame ? (
+                  <div
                     style={{
-                      backgroundColor: rowIsUnavailable
-                        ? "rgba(0,0,0,0.06)"
-                        : isCurrentPlayer
-                          ? "rgba(255,255,255,0.08)"
-                          : undefined,
-                      fontWeight: isCurrentPlayer ? "bold" : undefined,
-                      color: rowIsUnavailable ? "#777" : undefined,
+                      marginTop: "8px",
+                      color: "#333",
                     }}
                   >
-                    <td style={{ padding: "4px 8px", borderBottom: "1px solid #333" }}>
-                      {row.seat === ownerSeat ? "👑" : row.seat}
-                    </td>
-                    <td style={{ padding: "4px 8px", borderBottom: "1px solid #333" }}>
-                      {rowIsUnavailable ? (
-                        <span style={{ color: "#777" }}>-</span>
-                      ) : (
-                        <span style={{ color: row.color, fontWeight: "bold" }}>{row.color}</span>
-                      )}
-                    </td>
-                    <td
-                      style={{
-                        padding: "4px 8px",
-                        borderBottom: "1px solid #333",
-                        width: "12ch",
-                        minWidth: "12ch",
-                        maxWidth: "12ch",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {rowIsUnavailable ? "Unavailable" : row.occupied ? row.playerId : "Empty"}
-                    </td>
-                    <td style={{ padding: "4px 8px", borderBottom: "1px solid #333" }}>
-                      {rowIsUnavailable ? "-" : "—"}
-                    </td>
-                    <td style={{ padding: "4px 8px", borderBottom: "1px solid #333" }}>
-                      {rowIsUnavailable ? (
-                        "-"
-                      ) : isCurrentPlayer ? (
-                        <input
-                          type="checkbox"
-                          checked={row.ready}
-                          onChange={(e) => onToggleReady(e.target.checked)}
-                          disabled={!connected || !row.occupied}
-                        />
-                      ) : row.occupied ? (
-                        row.ready ? "✔" : "—"
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    {!isRoomFull
+                      ? "Room must be full to start."
+                      : !allSeatedReady && seatedCount > 0
+                      ? "All players must be ready to start."
+                      : ""}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
         </>
       )}
     </div>
@@ -1983,6 +2026,7 @@ export default function App() {
       }}
       onStartGame={handleStartGame}
       onUpdateGameConfig={handleUpdateGameConfig}
+      isOwner={isOwner}
     />
   );
 }

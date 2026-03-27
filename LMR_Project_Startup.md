@@ -48,17 +48,39 @@ Playpen/board_geometry/boardGeometry.ts
 
 ---
 
-## Last Session Accomplishments (2026-03-25)
+## Last Session Accomplishments (2026-03-27)
 
-### M8 — Results & Post-Game Flow (Completed)
+### M5 — Lobby UX & Interaction Stabilization
 
-• Implemented on-board **Results Overlay**  
-• Implemented `gameOver` server message  
-• Implemented `ackGameOver` client acknowledgment  
-• Implemented **owner-controlled return to lobby**  
-• Removed automatic lobby return  
-• Removed rematch from scope  
-• Validated **solo and team flows end-to-end**  
+• Rebuilt lobby layout (side-by-side):
+  - Lobby Seats (left)
+  - Pre-Game Options + Start (right)
+
+• Implemented fixed 8-seat table model
+  - Rows always visible
+  - Rows disabled based on player count
+
+• Restored and stabilized Ready system
+  - Checkbox for current player
+  - Read-only indicators for others
+
+• Implemented owner visibility (crown in seat column)
+
+• Enforced Start conditions:
+  - Room must be full
+  - All players must be Ready
+  - Owner-only start authority
+
+• Implemented Start button UX contract:
+  - Green text + green border + light green background when valid
+  - Disabled for non-owner players
+  - No misleading clickable states
+
+• Added Players X/Y display
+
+• Recovered from multiple UI regressions
+  - Established safe modification approach (full-file replacement only)
+  - Eliminated pattern-based replacements
 
 ---
 
@@ -67,10 +89,12 @@ Playpen/board_geometry/boardGeometry.ts
 Stable baseline (must be preserved):
 
 • App.tsx  
-  - WebSocket lifecycle stabilized (no reconnect loop)  
-  - Correct gameOver payload mapping  
-  - Results overlay fully functional  
-  - Proper phase gating (active + ended)  
+  - Lobby layout stabilized  
+  - Seat table behavior correct  
+  - Ready system correct (checkbox + read-only)  
+  - Owner-only start enforced (logic + UI)  
+  - Start button visual contract correct  
+  - Disabled rows functioning correctly  
 
 • handleMessage.ts  
   - Delegation logic stable  
@@ -85,51 +109,44 @@ Stable baseline (must be preserved):
 
 System status:
 
-• Multiplayer gameplay loop fully stable  
-• Team play fully validated  
-• Delegation working correctly  
-• End-of-game flow complete  
-• Post-game return to lobby controlled by owner  
+• Multiplayer gameplay loop stable  
+• Lobby flow stable (create → join → ready → start)  
+• Ownership model functioning correctly  
+• UI interaction contract aligned with server rules  
 
 ---
 
-## Active Focus Shift
+## Active Focus
 
-Next milestone focus:
+Continue M5 refinement:
 
-### M5 — Player Entry & Access (Refinement)
-
-Goal:
-
-Make the system usable for **external players**, not just internal testing.
+### Player Identity & Lobby Completion
 
 ---
 
-## Next Action
+## Next Action (START HERE)
 
-### M5 — Entry Flow Definition (START HERE NEXT SESSION)
+### Player Naming Implementation
 
-Define the exact external player experience before coding.
+Define and implement:
+
+• Player name input (replaces p0/p1/etc.)  
+• Validation rules:
+  - max length: 12 characters  
+  - uniqueness (case-insensitive)  
+  - trimmed input  
+
+• UI placement:
+  - within Lobby Seats table (Player column)
 
 ---
 
-### Immediate Task
+## Follow-on Scope (DO NOT IMPLEMENT YET)
 
-Decide:
-
-• Player naming rule:
-  - optional on join  
-  - required before Ready  (recommended baseline)
-
----
-
-### Follow-on Scope (DO NOT IMPLEMENT YET)
-
-• Room join clarity (code entry UX)  
-• Player identity display in lobby  
-• Owner visibility clarity  
-• Reconnect expectations  
-• External usability validation  
+• Color selection dropdown  
+• Team selection control  
+• Owner display in header (optional enhancement)  
+• Lobby polish (centering / spacing)  
 
 ---
 
@@ -137,10 +154,10 @@ Decide:
 
 Do NOT:
 
-• Modify core gameplay loop  
+• Modify gameplay loop  
+• Modify server authority model  
 • Introduce rematch logic  
-• Add player communication yet  
-• Change server authority model  
+• Change delegation or dice systems  
 
 ---
 
@@ -148,18 +165,21 @@ Do NOT:
 
 At next session start:
 
-1. Confirm baseline stability:
+1. Confirm baseline:
    - Run server
-   - Join room (2 clients)
-   - Verify full game → results → return to lobby
+   - Open 2+ clients
+   - Create room
+   - Fill seats
+   - Ready all players
+   - Verify only owner can start
 
 2. Begin with:
-   → Player naming decision (M5)
+   → Player naming implementation
 
 3. Do NOT touch:
-   - delegation logic  
-   - dice system  
-   - results flow  
+   - start logic  
+   - seat logic  
+   - ready system  
 
 Unless regression is observed  
 
@@ -169,9 +189,9 @@ Unless regression is observed
 
 Stop immediately if:
 
-• Join flow breaks  
-• Lobby state desync occurs  
-• Game no longer reaches gameOver correctly  
-• Return-to-lobby fails  
+• Ready system breaks  
+• Seat table desync occurs  
+• Non-owner can start game  
+• Start becomes clickable incorrectly  
 
 Otherwise proceed

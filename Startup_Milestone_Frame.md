@@ -39,7 +39,26 @@ completion history for the LMR project.
 ✓ M5.6 — Lobby Lifecycle (join / leave / ready / start)  
 ✓ M5.7 — Team Assignment & Locking  
 ✓ M5.8 — Post-Game Return to Lobby  
-✓ M5.9 — Lobby Interaction Contract
+✓ M5.9 — Lobby Interaction Contract  
+✓ M5.10 — Lobby UX & Layout Stabilization
+
+### M5.10 — Lobby UX & Layout Stabilization
+
+• Fixed 8-seat table (non-dynamic, always visible)  
+• Disabled rows tied to selected player count  
+• Checkbox-based Ready system (player-controlled)  
+• Owner indicator (crown) in seat column  
+• Owner-only Start enforcement (UI + behavior)  
+• Start button visual contract:
+  - Green only when valid AND owner  
+  - Disabled for non-owner players  
+• Players X/Y display normalization  
+• Layout restructuring:
+  - Lobby Seats (left)
+  - Pre-Game Options + Start (right)
+• Regression recovery stabilization after layout iteration
+
+------------------------------------------------------------------------
 
 ### M5.9 — Lobby Interaction Contract
 
@@ -67,7 +86,9 @@ completion history for the LMR project.
 - Fast Track
 
 #### Ready / Start Contract
-- Start is enabled only when all players are Ready.
+- Start is enabled only when:
+  - all seats are filled
+  - all players are Ready
 - If any player becomes Not Ready, Start is disabled immediately.
 - If the owner changes any lobby-wide option, all players reset to Not Ready.
 
@@ -77,10 +98,8 @@ completion history for the LMR project.
 - 8 players: 2 teams of 4
 
 #### Owner Visibility
-- Owner should be visible in the status area so all players can see who controls:
-  - start game
-  - lobby-wide options
-  - return to lobby after game over
+- Owner is indicated in the seat table (crown icon)
+- Owner is the only player able to initiate Start
 
 ------------------------------------------------------------------------
 

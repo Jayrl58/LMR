@@ -144,3 +144,57 @@ to prevent recurrence.
 "Always validate contracts before rendering. If behavior disappears without errors, assume a contract mismatch or lifecycle issue."
 
 ------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+## 2026-03-27 --- Lobby UI Regression Loop & Replacement Discipline
+
+### What went well
+
+• Rapid detection of regressions through visual validation  
+• Multi-client testing exposed ownership/UI mismatch clearly  
+• Strong enforcement of working preferences prevented bad commits  
+• Successful recovery to stable baseline before continuing  
+
+------------------------------------------------------------------------
+
+### What did not work well
+
+• Pattern-based text replacements caused unintended code changes  
+• Partial structural assumptions led to UI regressions (checkbox → text)  
+• Multiple iterations drifted away from known-good baseline  
+• Generated files were not always true full replacements  
+
+------------------------------------------------------------------------
+
+### Process corrections
+
+• Enforce **Baseline Preservation Rule**  
+→ Always start from the last known-good file  
+→ Never “approximate” current state  
+
+• Enforce **No Pattern Replacement Rule**  
+→ Do not modify code via string/pattern matching  
+→ Only edit known, exact code blocks  
+
+• Reinforce **Full File Replacement Rule (Strict)**  
+→ Every replacement must be complete and verifiable  
+→ No snippets, no partials, no assumptions  
+
+• Enforce **Single-Concern Change Rule**  
+→ Only change one behavior per iteration  
+→ Verify before proceeding  
+
+------------------------------------------------------------------------
+
+### Outcome
+
+• Root cause: unsafe pattern-based edits and stale file assumptions  
+• Fix: returned to stable baseline and applied minimal, targeted change  
+• Result: Start button behavior + UI alignment achieved without regression  
+
+• Reinforced rule:
+
+"Never modify what you cannot see exactly. Always operate from the current file, and change only one known element at a time."
+
+------------------------------------------------------------------------
