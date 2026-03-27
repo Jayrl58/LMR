@@ -953,6 +953,12 @@ export function startWsServer(opts: WsServerOptions) {
         const gc = (msg as any).gameConfig as LobbyGameConfig;
         const prevTeamPlay = !!room.gameConfig?.teamPlay;
         room.gameConfig = { ...(room.gameConfig ?? {}), ...(gc ?? {}) };
+
+        // Locked lobby contract: any lobby-wide option change resets all players to Not Ready.
+        for (const existingPlayerId of room.clientToPlayer.values()) {
+          room.readyByPlayer.set(existingPlayerId, false);
+        }
+
         const nowTeamPlay = !!room.gameConfig?.teamPlay;
 
         // Team Play contract: enabling Team Play must immediately backfill teams for current players.
@@ -1033,11 +1039,19 @@ if (msg.type === "setReady") {
           send(ws, makeError("BAD_MESSAGE", "startGame is not allowed once game has started.", reqId));
           return;
         }
+
+        const pc = Number((msg as any).playerCount);
+        const connectedPlayers = room.clientToPlayer.size;
+        if (connectedPlayers !== pc) {
+          send(ws, makeError("BAD_MESSAGE", "Room must be full before starting the game.", reqId));
+          return;
+        }
+
         if (!allConnectedPlayersReady(room)) {
           send(ws, makeError("BAD_MESSAGE", "All players must be ready before the game can start.", reqId));
           return;
         }
-        const pc = Number((msg as any).playerCount);
+
         const options = (msg as any).options as GameStartOptions | undefined;
 
         room.expectedPlayerCount = pc;
