@@ -676,6 +676,7 @@ function LobbyView(props: {
   onRoomCodeInputChange: (value: string) => void;
   onCreateRoom: () => void;
   onJoinRoom: () => void;
+  onCopyInviteLink: () => void;
   onToggleReady: (ready: boolean) => void;
   onStartGame: () => void;
   onUpdateGameConfig: (patch: Partial<LobbyGameConfigView>) => void;
@@ -701,6 +702,7 @@ function LobbyView(props: {
     onRoomCodeInputChange,
     onCreateRoom,
     onJoinRoom,
+    onCopyInviteLink,
     onToggleReady,
     onStartGame,
     onUpdateGameConfig,
@@ -772,6 +774,11 @@ function LobbyView(props: {
         >
           Join Room
         </button>
+        {roomCode ? (
+          <button onClick={onCopyInviteLink}>
+            Copy Invite Link
+          </button>
+        ) : null}
       </div>
       {preJoinNameError ? (
         <div style={{ marginTop: "-4px", marginBottom: "8px", fontSize: "11px", color: "#b00020" }}>
@@ -2010,6 +2017,44 @@ export default function App() {
     sendMessage(wsRef.current, { type: "joinRoom", roomCode: trimmed, name: normalizedPreJoinName });
   };
 
+  const handleCopyInviteLink = async () => {
+    const activeRoomCode = (roomCode || lobby?.roomCode || "").trim().toUpperCase();
+    if (!activeRoomCode) {
+      setLatestStatusText("No room code available to copy.");
+      return;
+    }
+
+    const inviteUrl = new URL(window.location.origin);
+    inviteUrl.searchParams.set("room", activeRoomCode);
+    const inviteText = inviteUrl.toString();
+
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(inviteText);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = inviteText;
+        textArea.setAttribute("readonly", "");
+        textArea.style.position = "fixed";
+        textArea.style.top = "-9999px";
+        textArea.style.left = "-9999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const copied = document.execCommand("copy");
+        document.body.removeChild(textArea);
+
+        if (!copied) {
+          throw new Error("execCommand copy failed");
+        }
+      }
+
+      setLatestStatusText(`Invite link copied: ${inviteText}`);
+    } catch {
+      setLatestStatusText(`Copy failed. Invite link: ${inviteText}`);
+    }
+  };
+
   const handleLocalPlayerNameCommit = () => {
     const normalized = normalizePlayerNameInput(localPlayerNameDraft);
     const validationError = getPlayerNameValidationError(localPlayerNameDraft, playerId, lobby);
@@ -2277,6 +2322,7 @@ export default function App() {
       onRoomCodeInputChange={setRoomCodeInput}
       onCreateRoom={handleCreateRoom}
       onJoinRoom={handleJoinRoom}
+      onCopyInviteLink={handleCopyInviteLink}
       onToggleReady={(ready) => {
         if (ready) handleReady();
         else handleNotReady();
