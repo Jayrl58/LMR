@@ -76,7 +76,10 @@ type GameOverResult =
       }>;
     };
 
-const WS_URL = "ws://127.0.0.1:8787";
+const WS_URL =
+  window.location.protocol === "https:"
+    ? `wss://${window.location.host}/ws`
+    : `ws://${window.location.host}/ws`;
 const MAX_LOBBY_SEATS = 8;
 const PLAYER_COUNT_OPTIONS = [4, 6, 8] as const;
 const CLIENT_ID_STORAGE_KEY = "lmr_client_id_v1";
@@ -149,6 +152,14 @@ function getOrCreateClientId(): string {
 
 function getStoredRoomCode(): string {
   if (typeof window === "undefined") return "";
+
+  const urlRoom = new URLSearchParams(window.location.search).get("room");
+  if (typeof urlRoom === "string" && urlRoom.trim()) {
+    const normalized = urlRoom.trim().toUpperCase();
+    window.localStorage.setItem(ROOM_CODE_STORAGE_KEY, normalized);
+    return normalized;
+  }
+
   return window.localStorage.getItem(ROOM_CODE_STORAGE_KEY) ?? "";
 }
 
@@ -653,12 +664,15 @@ function LobbyView(props: {
   phase: string;
   roomCode: string;
   roomCodeInput: string;
+  preJoinName: string;
+  preJoinNameError: string;
   joinedRoom: boolean;
   lobby: LobbyViewState | null;
   localPlayerNameDraft: string;
   localPlayerNameError: string;
   onLocalPlayerNameDraftChange: (value: string) => void;
   onCommitLocalPlayerName: () => void;
+  onPreJoinNameChange: (value: string) => void;
   onRoomCodeInputChange: (value: string) => void;
   onCreateRoom: () => void;
   onJoinRoom: () => void;
@@ -675,12 +689,15 @@ function LobbyView(props: {
     phase,
     roomCode,
     roomCodeInput,
+    preJoinName,
+    preJoinNameError,
     joinedRoom,
     lobby,
     localPlayerNameDraft,
     localPlayerNameError,
     onLocalPlayerNameDraftChange,
     onCommitLocalPlayerName,
+    onPreJoinNameChange,
     onRoomCodeInputChange,
     onCreateRoom,
     onJoinRoom,
@@ -705,8 +722,9 @@ function LobbyView(props: {
   const ownerSeat = seatRows.find((row) => row.occupied)?.seat;
   const isRoomFull = seatedCount === selectedPlayerCount;
   const canStartGame = connected && isRoomFull && allSeatedReady;
-  const canCreateRoom = connected && (!joinedRoom || isOwner);
-  const canJoinRoom = connected && !joinedRoom && !!roomCodeInput.trim();
+  const hasValidPreJoinName = !preJoinNameError && normalizePlayerNameInput(preJoinName).length >= MIN_NAME_LENGTH;
+  const canCreateRoom = connected && (!joinedRoom || isOwner) && hasValidPreJoinName;
+  const canJoinRoom = connected && !joinedRoom && !!roomCodeInput.trim() && hasValidPreJoinName;
   const inactiveEntryButtonStyle = {
     opacity: 0.55,
     cursor: "default" as const,
@@ -721,6 +739,17 @@ function LobbyView(props: {
       </div>
 
       <div style={{ margin: "10px 0", display: "flex", gap: "8px", alignItems: "center" }}>
+        <input
+          type="text"
+          value={preJoinName}
+          onChange={(e) => onPreJoinNameChange(e.target.value)}
+          placeholder="Name"
+          maxLength={MAX_NAME_LENGTH + 4}
+          style={{
+            width: "120px",
+            border: preJoinNameError ? "1px solid #b00020" : undefined,
+          }}
+        />
         <input
           type="text"
           value={roomCodeInput}
@@ -744,6 +773,11 @@ function LobbyView(props: {
           Join Room
         </button>
       </div>
+      {preJoinNameError ? (
+        <div style={{ marginTop: "-4px", marginBottom: "8px", fontSize: "11px", color: "#b00020" }}>
+          {preJoinNameError}
+        </div>
+      ) : null}
 
       {joinedRoom && (
         <>
@@ -1530,6 +1564,7 @@ export default function App() {
   const [latestStatusText, setLatestStatusText] = useState("");
   const [localPlayerNameDraft, setLocalPlayerNameDraft] = useState("");
   const [lastLobbySeededLocalPlayerName, setLastLobbySeededLocalPlayerName] = useState("");
+  const [preJoinName, setPreJoinName] = useState("");
 
   useEffect(() => {
     const ws = new WebSocket(WS_URL);
@@ -1868,6 +1903,15 @@ export default function App() {
     [localPlayerNameDraft, playerId, lobby]
   );
 
+  const preJoinNameError = useMemo(() => {
+    const normalized = normalizePlayerNameInput(preJoinName);
+    if (!normalized) return "Name is required.";
+    if (normalized.length < MIN_NAME_LENGTH) return `Name must be at least ${MIN_NAME_LENGTH} character${MIN_NAME_LENGTH === 1 ? "" : "s"}.`;
+    if (normalized.length > MAX_NAME_LENGTH) return `Name must be ${MAX_NAME_LENGTH} characters or fewer.`;
+    if (!/^[A-Za-z0-9 ]+$/.test(normalized)) return "Use letters, numbers, and spaces only.";
+    return "";
+  }, [preJoinName]);
+
   const isLocalPlayerReadyEligible = useMemo(() => {
     if (!localPlayerLobbyEntry) return false;
     if (localPlayerNameError) return false;
@@ -1911,6 +1955,12 @@ export default function App() {
   };
 
   const handleCreateRoom = () => {
+    const normalizedPreJoinName = normalizePlayerNameInput(preJoinName);
+    if (!normalizedPreJoinName || preJoinNameError) {
+      setLatestStatusText(preJoinNameError || "Enter a valid name before creating a room.");
+      return;
+    }
+
     setPlayerId("");
     setPhase("lobby");
     setRoomCode("");
@@ -1928,12 +1978,17 @@ export default function App() {
     setSelectedDie("");
     setSelectedPegId(null);
     setStoredRoomCode("");
-    sendMessage(wsRef.current, { type: "joinRoom" });
+    sendMessage(wsRef.current, { type: "joinRoom", name: normalizedPreJoinName });
   };
 
   const handleJoinRoom = () => {
     const trimmed = roomCodeInput.trim().toUpperCase();
+    const normalizedPreJoinName = normalizePlayerNameInput(preJoinName);
     if (!trimmed) return;
+    if (!normalizedPreJoinName || preJoinNameError) {
+      setLatestStatusText(preJoinNameError || "Enter a valid name before joining a room.");
+      return;
+    }
 
     setPlayerId("");
     setPhase("lobby");
@@ -1952,7 +2007,7 @@ export default function App() {
     setSelectedDie("");
     setSelectedPegId(null);
     setStoredRoomCode(trimmed);
-    sendMessage(wsRef.current, { type: "joinRoom", roomCode: trimmed });
+    sendMessage(wsRef.current, { type: "joinRoom", roomCode: trimmed, name: normalizedPreJoinName });
   };
 
   const handleLocalPlayerNameCommit = () => {
@@ -2210,12 +2265,15 @@ export default function App() {
       phase={phase || lobby?.phase || "lobby"}
       roomCode={roomCode}
       roomCodeInput={roomCodeInput}
+      preJoinName={preJoinName}
+      preJoinNameError={preJoinNameError}
       joinedRoom={joinedRoom}
       lobby={lobby}
       localPlayerNameDraft={localPlayerNameDraft}
       localPlayerNameError={localPlayerNameError}
       onLocalPlayerNameDraftChange={setLocalPlayerNameDraft}
       onCommitLocalPlayerName={handleLocalPlayerNameCommit}
+      onPreJoinNameChange={setPreJoinName}
       onRoomCodeInputChange={setRoomCodeInput}
       onCreateRoom={handleCreateRoom}
       onJoinRoom={handleJoinRoom}
