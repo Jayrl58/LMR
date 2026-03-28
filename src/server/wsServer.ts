@@ -102,6 +102,8 @@ function isClientMessage(x: any): x is ClientMessage {
     case "setLobbyGameConfig":
       return isPlainObject(x.gameConfig) && typeof (x.gameConfig as any).playerCount === "number";
 
+    case "setPlayerName":
+      return typeof (x as any).name === "string";
 
     case "setTeam":
       return (
@@ -358,6 +360,67 @@ function isLobbyPhase(room: Room) {
 }
 
 
+const MIN_NAME_LENGTH = 1;
+const MAX_NAME_LENGTH = 12;
+const PLAYER_NAME_ALLOWED_REGEX = /^[A-Za-z0-9 ]+$/;
+
+function normalizePlayerName(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function validatePlayerNameForRoom(
+  room: Room,
+  playerId: string,
+  rawName: string
+): { ok: true; normalized: string } | { ok: false; message: string; normalized: string } {
+  const normalized = normalizePlayerName(rawName);
+
+  if (!normalized) {
+    return { ok: false, message: "Name cannot be blank.", normalized };
+  }
+
+  if (normalized.length < MIN_NAME_LENGTH) {
+    return {
+      ok: false,
+      message: `Name must be at least ${MIN_NAME_LENGTH} character${MIN_NAME_LENGTH === 1 ? "" : "s"}.`,
+      normalized,
+    };
+  }
+
+  if (normalized.length > MAX_NAME_LENGTH) {
+    return {
+      ok: false,
+      message: `Name must be ${MAX_NAME_LENGTH} characters or fewer.`,
+      normalized,
+    };
+  }
+
+  if (!PLAYER_NAME_ALLOWED_REGEX.test(normalized)) {
+    return {
+      ok: false,
+      message: "Name may contain only letters, numbers, and spaces.",
+      normalized,
+    };
+  }
+
+  const target = normalized.toLocaleLowerCase();
+  for (const existingPlayerId of room.clientToPlayer.values()) {
+    if (existingPlayerId === playerId) continue;
+    const existingName = room.playerNamesByPlayer.get(existingPlayerId) ?? existingPlayerId;
+    if (normalizePlayerName(existingName).toLocaleLowerCase() === target) {
+      return { ok: false, message: "Name must be unique.", normalized };
+    }
+  }
+
+  return { ok: true, normalized };
+}
+
+function hasValidPlayerName(room: Room, playerId: string): boolean {
+  const existing = room.playerNamesByPlayer.get(playerId) ?? playerId;
+  return validatePlayerNameForRoom(room, playerId, existing).ok;
+}
+
+
 function roomFilePath(persistenceDir: string, roomCode: string) {
   return path.join(persistenceDir, `${roomCode}.json`);
 }
@@ -366,6 +429,7 @@ type PersistedRoom = {
   session: SessionState;
   clientToPlayer: Record<string, string>;
   readyByPlayer: Record<string, boolean>;
+  playerNamesByPlayer?: Record<string, string>;
   expectedPlayerCount?: number;
   phase: "lobby" | "active";
   gameConfig?: LobbyGameConfig;
@@ -378,6 +442,7 @@ type Room = {
   // Connection + seat identity
   clientToPlayer: Map<string, string>;
   readyByPlayer: Map<string, boolean>;
+  playerNamesByPlayer: Map<string, string>;
   expectedPlayerCount?: number;
 
   // Room lifecycle (UI: lobby -> active; game.phase may be "ended" while room.phase remains "active")
@@ -411,6 +476,11 @@ function loadRoomFromDisk(persistenceDir: string, roomCode: string): Room | null
       session: parsed.session,
       clientToPlayer: new Map(Object.entries(parsed.clientToPlayer ?? {})),
       readyByPlayer: new Map(Object.entries(parsed.readyByPlayer ?? {}).map(([k, v]) => [k, !!v])),
+      playerNamesByPlayer: new Map(
+        Object.entries(parsed.playerNamesByPlayer ?? {}).filter(
+          ([, value]) => typeof value === "string" && value.trim() !== ""
+        ) as Array<[string, string]>
+      ),
       expectedPlayerCount: parsed.expectedPlayerCount,
       phase: parsed.phase,
       gameConfig: parsed.gameConfig,
@@ -441,6 +511,7 @@ function persist(room: Room) {
       session: room.session,
       clientToPlayer: Object.fromEntries(room.clientToPlayer.entries()),
       readyByPlayer: Object.fromEntries(room.readyByPlayer.entries()),
+      playerNamesByPlayer: Object.fromEntries(room.playerNamesByPlayer.entries()),
       expectedPlayerCount: room.expectedPlayerCount,
       phase: room.phase,
       gameConfig: room.gameConfig,
@@ -459,7 +530,7 @@ function persist(room: Room) {
 let roomPersistenceDir: string | undefined;
 
 function computeLobby(room: Room): LobbyState {
-  const players: LobbyPlayer[] = [];
+  const players: any[] = [];
   for (const [clientId, playerId] of room.clientToPlayer.entries()) {
     const seat = Number(playerId.replace(/^p/, ""));
     players.push({
@@ -467,18 +538,19 @@ function computeLobby(room: Room): LobbyState {
       clientId,
       seat: Number.isFinite(seat) ? seat : players.length,
       ready: room.readyByPlayer.get(playerId) ?? false,
+      name: room.playerNamesByPlayer.get(playerId) ?? playerId,
     });
   }
   players.sort((a, b) => a.seat - b.seat);
 
-  const lobby: LobbyState = {
+  const lobby: any = {
     roomCode: room.code,
     phase: room.phase,
     expectedPlayerCount: room.expectedPlayerCount,
     players,
     gameConfig: room.gameConfig,
   };
-  return lobby;
+  return lobby as LobbyState;
 }
 
 function computeTurn(room: Room): TurnInfo {
@@ -740,6 +812,7 @@ function ensureRoom(roomCode: string, initialState: GameState): Room {
     session,
     clientToPlayer: new Map(),
     readyByPlayer: new Map(),
+    playerNamesByPlayer: new Map(),
     expectedPlayerCount: undefined,
     phase: "lobby",
     gameConfig: undefined,
@@ -853,6 +926,7 @@ export function startWsServer(opts: WsServerOptions) {
 
         room.clientToPlayer.set(cid, playerId);
         if (!room.readyByPlayer.has(playerId)) room.readyByPlayer.set(playerId, false);
+        if (!room.playerNamesByPlayer.has(playerId)) room.playerNamesByPlayer.set(playerId, playerId);
         if (!room.originalJoinOrder.includes(playerId)) {
           room.originalJoinOrder.push(playerId);
         }
@@ -905,6 +979,7 @@ export function startWsServer(opts: WsServerOptions) {
 
           // Remove ready flag
           room.readyByPlayer.delete(leavingPlayerId);
+          room.playerNamesByPlayer.delete(leavingPlayerId);
 
           // Remove from teams (if enabled)
           const gc0 = room.gameConfig;
@@ -982,6 +1057,40 @@ export function startWsServer(opts: WsServerOptions) {
       }
 
 
+      if (msg.type === "setPlayerName") {
+        if (room.phase !== "lobby") {
+          send(ws, makeError("BAD_MESSAGE", "Cannot change player name after game start.", reqId));
+          return;
+        }
+
+        const proposedName = String((msg as any).name ?? "");
+        const validation = validatePlayerNameForRoom(room, playerId, proposedName);
+        if (!validation.ok) {
+          send(
+            ws,
+            withReqId(
+              {
+                type: "playerNameRejected",
+                roomCode: room.code,
+                playerId,
+                name: proposedName,
+                normalizedName: validation.normalized,
+                message: validation.message,
+              } as any,
+              reqId
+            )
+          );
+          return;
+        }
+
+        room.playerNamesByPlayer.set(playerId, validation.normalized);
+        room.readyByPlayer.set(playerId, false);
+
+        persist(room);
+        emitLobbySync(room, reqId);
+        return;
+      }
+
       if (msg.type === "setTeam") {
         if (room.phase !== "lobby") {
           send(ws, makeError("BAD_MESSAGE", "Cannot change teams after game start.", reqId));
@@ -1050,6 +1159,13 @@ if (msg.type === "setReady") {
         if (!allConnectedPlayersReady(room)) {
           send(ws, makeError("BAD_MESSAGE", "All players must be ready before the game can start.", reqId));
           return;
+        }
+
+        for (const connectedPlayerId of room.clientToPlayer.values()) {
+          if (!hasValidPlayerName(room, connectedPlayerId)) {
+            send(ws, makeError("BAD_MESSAGE", "All players must have valid names before the game can start.", reqId));
+            return;
+          }
         }
 
         const options = (msg as any).options as GameStartOptions | undefined;

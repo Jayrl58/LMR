@@ -15,6 +15,7 @@ type LobbyPlayerView = {
   playerId: string;
   seat: number;
   ready: boolean;
+  name: string;
 };
 
 type LobbyGameConfigView = {
@@ -37,6 +38,7 @@ type LobbySeatRow = {
   seat: number;
   color: string;
   playerId: string;
+  name: string;
   ready: boolean;
   occupied: boolean;
 };
@@ -80,6 +82,8 @@ const PLAYER_COUNT_OPTIONS = [4, 6, 8] as const;
 const CLIENT_ID_STORAGE_KEY = "lmr_client_id_v1";
 const ROOM_CODE_STORAGE_KEY = "lmr_room_code_v1";
 const DEBUG_HIGHLIGHT_COLOR = "#ff00ff";
+const MIN_NAME_LENGTH = 1;
+const MAX_NAME_LENGTH = 12;
 
 function getColorForSeat(seat: number): string {
   return PLAYER_COLOR_PALETTE[seat % PLAYER_COLOR_PALETTE.length];
@@ -166,6 +170,10 @@ function parseLobbyState(value: unknown): LobbyViewState | null {
         playerId: player.playerId,
         seat: player.seat,
         ready: !!player.ready,
+        name:
+          typeof player.name === "string" && player.name.trim()
+            ? player.name
+            : player.playerId,
       };
     })
     .filter((player): player is LobbyPlayerView => !!player)
@@ -191,6 +199,32 @@ function parseLobbyState(value: unknown): LobbyViewState | null {
     players,
     gameConfig,
   };
+}
+
+function normalizePlayerNameInput(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function getPlayerNameValidationError(
+  draftValue: string,
+  playerId: string,
+  lobby: LobbyViewState | null
+): string {
+  const normalized = normalizePlayerNameInput(draftValue);
+
+  if (!normalized) return "Name is required.";
+  if (normalized.length < MIN_NAME_LENGTH) return `Name must be at least ${MIN_NAME_LENGTH} character${MIN_NAME_LENGTH === 1 ? "" : "s"}.`;
+  if (normalized.length > MAX_NAME_LENGTH) return `Name must be ${MAX_NAME_LENGTH} characters or fewer.`;
+  if (!/^[A-Za-z0-9 ]+$/.test(normalized)) return "Use letters, numbers, and spaces only.";
+
+  const duplicateExists = (lobby?.players ?? []).some((player) => {
+    if (player.playerId === playerId) return false;
+    return normalizePlayerNameInput(player.name).toLowerCase() === normalized.toLowerCase();
+  });
+
+  if (duplicateExists) return "Name must be unique.";
+
+  return "";
 }
 
 function getCurrentTurnPlayerId(gameState: GameState): string {
@@ -299,6 +333,7 @@ function buildLobbySeatRows(lobby: LobbyViewState | null): LobbySeatRow[] {
       seat,
       color: getColorForSeat(seat),
       playerId: player?.playerId ?? "",
+      name: player?.name ?? "",
       ready: player?.ready ?? false,
       occupied: !!player,
     };
@@ -614,11 +649,16 @@ function findMoveForDestination(
 function LobbyView(props: {
   connected: boolean;
   playerId: string;
+  playerDisplayName: string;
   phase: string;
   roomCode: string;
   roomCodeInput: string;
   joinedRoom: boolean;
   lobby: LobbyViewState | null;
+  localPlayerNameDraft: string;
+  localPlayerNameError: string;
+  onLocalPlayerNameDraftChange: (value: string) => void;
+  onCommitLocalPlayerName: () => void;
   onRoomCodeInputChange: (value: string) => void;
   onCreateRoom: () => void;
   onJoinRoom: () => void;
@@ -626,15 +666,21 @@ function LobbyView(props: {
   onStartGame: () => void;
   onUpdateGameConfig: (patch: Partial<LobbyGameConfigView>) => void;
   isOwner: boolean;
+  isLocalPlayerReadyEligible: boolean;
 }) {
   const {
     connected,
     playerId,
+    playerDisplayName,
     phase,
     roomCode,
     roomCodeInput,
     joinedRoom,
     lobby,
+    localPlayerNameDraft,
+    localPlayerNameError,
+    onLocalPlayerNameDraftChange,
+    onCommitLocalPlayerName,
     onRoomCodeInputChange,
     onCreateRoom,
     onJoinRoom,
@@ -642,6 +688,7 @@ function LobbyView(props: {
     onStartGame,
     onUpdateGameConfig,
     isOwner,
+    isLocalPlayerReadyEligible,
   } = props;
 
   const seatRows = useMemo(() => buildLobbySeatRows(lobby), [lobby]);
@@ -658,12 +705,18 @@ function LobbyView(props: {
   const ownerSeat = seatRows.find((row) => row.occupied)?.seat;
   const isRoomFull = seatedCount === selectedPlayerCount;
   const canStartGame = connected && isRoomFull && allSeatedReady;
+  const canCreateRoom = connected && (!joinedRoom || isOwner);
+  const canJoinRoom = connected && !joinedRoom && !!roomCodeInput.trim();
+  const inactiveEntryButtonStyle = {
+    opacity: 0.55,
+    cursor: "default" as const,
+  };
 
   return (
     <div>
       <div>
         <b>Status:</b> {connected ? "Connected" : "Disconnected"} |{" "}
-        <b>Player:</b> {playerId || "-"} | <b>Phase:</b> {phase || "-"} |{" "}
+        <b>Player:</b> {playerDisplayName || "-"} | <b>Phase:</b> {phase || "-"} |{" "}
         <b>Room:</b> {roomCode || "-"}
       </div>
 
@@ -676,10 +729,18 @@ function LobbyView(props: {
           maxLength={6}
           style={{ width: "120px", textTransform: "uppercase" }}
         />
-        <button onClick={onCreateRoom} disabled={!connected}>
+        <button
+          onClick={onCreateRoom}
+          disabled={!canCreateRoom}
+          style={!canCreateRoom ? inactiveEntryButtonStyle : undefined}
+        >
           Create Room
         </button>
-        <button onClick={onJoinRoom} disabled={!connected || !roomCodeInput.trim()}>
+        <button
+          onClick={onJoinRoom}
+          disabled={!canJoinRoom}
+          style={!canJoinRoom ? inactiveEntryButtonStyle : undefined}
+        >
           Join Room
         </button>
       </div>
@@ -762,7 +823,50 @@ function LobbyView(props: {
                             textOverflow: "ellipsis",
                           }}
                         >
-                          {rowIsUnavailable ? "Unavailable" : row.occupied ? row.playerId : "Empty"}
+                          {rowIsUnavailable ? (
+                            "Unavailable"
+                          ) : isCurrentPlayer ? (
+                            <div>
+                              <input
+                                type="text"
+                                value={localPlayerNameDraft}
+                                onChange={(e) => onLocalPlayerNameDraftChange(e.target.value)}
+                                onBlur={onCommitLocalPlayerName}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    onCommitLocalPlayerName();
+                                  }
+                                }}
+                                placeholder="Enter name"
+                                maxLength={MAX_NAME_LENGTH + 4}
+                                style={{
+                                  width: "100%",
+                                  boxSizing: "border-box",
+                                  border: localPlayerNameError ? "1px solid #b00020" : "1px solid #666",
+                                  padding: "2px 4px",
+                                  fontWeight: 600,
+                                }}
+                              />
+                              {localPlayerNameError ? (
+                                <div
+                                  style={{
+                                    marginTop: "2px",
+                                    fontSize: "11px",
+                                    lineHeight: 1.2,
+                                    color: "#b00020",
+                                    whiteSpace: "normal",
+                                  }}
+                                >
+                                  {localPlayerNameError}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : row.occupied ? (
+                            row.name
+                          ) : (
+                            "Empty"
+                          )}
                         </td>
                         <td style={{ padding: "4px 8px", borderBottom: "1px solid #333" }}>
                           {rowIsUnavailable ? "-" : "—"}
@@ -775,7 +879,7 @@ function LobbyView(props: {
                               type="checkbox"
                               checked={row.ready}
                               onChange={(e) => onToggleReady(e.target.checked)}
-                              disabled={!connected || !row.occupied}
+                              disabled={!connected || !row.occupied || !isLocalPlayerReadyEligible}
                             />
                           ) : row.occupied ? (
                             row.ready ? "✔" : "—"
@@ -900,6 +1004,7 @@ function LobbyView(props: {
 function GameView(props: {
   connected: boolean;
   playerId: string;
+  playerDisplayName: string;
   phase: string;
   roomCode: string;
   gameState: GameState;
@@ -931,6 +1036,7 @@ function GameView(props: {
   const {
     connected,
     playerId,
+    playerDisplayName,
     phase,
     roomCode,
     gameState,
@@ -1049,7 +1155,7 @@ function GameView(props: {
           </div>
 
           <div style={{ marginBottom: "6px" }}>
-            <b>Player:</b> {playerId || "-"}
+            <b>Player:</b> {playerDisplayName || "-"}
           </div>
 
           <div style={{ marginBottom: "6px" }}>
@@ -1422,6 +1528,8 @@ export default function App() {
   const [selectedPegId, setSelectedPegId] = useState<string | null>(null);
   const [latestMessageType, setLatestMessageType] = useState("");
   const [latestStatusText, setLatestStatusText] = useState("");
+  const [localPlayerNameDraft, setLocalPlayerNameDraft] = useState("");
+  const [lastLobbySeededLocalPlayerName, setLastLobbySeededLocalPlayerName] = useState("");
 
   useEffect(() => {
     const ws = new WebSocket(WS_URL);
@@ -1701,6 +1809,47 @@ export default function App() {
     }
   }, [pendingDice, selectedDie, gameState, playerId, gameOverResult]);
 
+  const localPlayerLobbyEntry = useMemo(() => {
+    if (!lobby || !playerId) return null;
+    return lobby.players.find((player) => player.playerId === playerId) ?? null;
+  }, [lobby, playerId]);
+
+  const localPlayerDisplayName = useMemo(() => {
+    if (localPlayerLobbyEntry?.name && localPlayerLobbyEntry.name.trim()) {
+      return localPlayerLobbyEntry.name;
+    }
+    if (playerId) return playerId;
+    return "-";
+  }, [localPlayerLobbyEntry, playerId]);
+
+  useEffect(() => {
+    const titleName =
+      localPlayerLobbyEntry?.name && localPlayerLobbyEntry.name.trim()
+        ? localPlayerLobbyEntry.name
+        : playerId || "LMR";
+    const titleRoom = roomCode || "LMR";
+    document.title = `${titleName} | ${titleRoom}`;
+  }, [localPlayerLobbyEntry, playerId, roomCode]);
+
+  useEffect(() => {
+    if (!localPlayerLobbyEntry) {
+      if (localPlayerNameDraft !== "") setLocalPlayerNameDraft("");
+      if (lastLobbySeededLocalPlayerName !== "") setLastLobbySeededLocalPlayerName("");
+      return;
+    }
+
+    const lobbyName = localPlayerLobbyEntry.name;
+
+    if (localPlayerNameDraft === lastLobbySeededLocalPlayerName) {
+      if (localPlayerNameDraft !== lobbyName) {
+        setLocalPlayerNameDraft(lobbyName);
+      }
+      if (lastLobbySeededLocalPlayerName !== lobbyName) {
+        setLastLobbySeededLocalPlayerName(lobbyName);
+      }
+    }
+  }, [localPlayerLobbyEntry, localPlayerNameDraft, lastLobbySeededLocalPlayerName]);
+
   const selectedDieControllerId = getPendingDieControllerId(pendingDice, selectedDie);
 
   const isOwner = useMemo(() => {
@@ -1708,6 +1857,22 @@ export default function App() {
     const sorted = [...lobby.players].sort((a, b) => a.seat - b.seat);
     return sorted.length > 0 && sorted[0].playerId === playerId;
   }, [lobby, playerId]);
+
+  const normalizedLocalPlayerNameDraft = useMemo(
+    () => normalizePlayerNameInput(localPlayerNameDraft),
+    [localPlayerNameDraft]
+  );
+
+  const localPlayerNameError = useMemo(
+    () => getPlayerNameValidationError(localPlayerNameDraft, playerId, lobby),
+    [localPlayerNameDraft, playerId, lobby]
+  );
+
+  const isLocalPlayerReadyEligible = useMemo(() => {
+    if (!localPlayerLobbyEntry) return false;
+    if (localPlayerNameError) return false;
+    return normalizePlayerNameInput(localPlayerLobbyEntry.name).length >= MIN_NAME_LENGTH;
+  }, [localPlayerLobbyEntry, localPlayerNameError]);
 
   const handleSelectDie = (dieValue: string) => {
     if (gameOverResult) return;
@@ -1790,7 +1955,35 @@ export default function App() {
     sendMessage(wsRef.current, { type: "joinRoom", roomCode: trimmed });
   };
 
+  const handleLocalPlayerNameCommit = () => {
+    const normalized = normalizePlayerNameInput(localPlayerNameDraft);
+    const validationError = getPlayerNameValidationError(localPlayerNameDraft, playerId, lobby);
+
+    if (!localPlayerLobbyEntry) return;
+
+    if (validationError) {
+      setLatestStatusText(validationError);
+      return;
+    }
+
+    if (normalized !== localPlayerNameDraft) {
+      setLocalPlayerNameDraft(normalized);
+    }
+
+    if (normalized === localPlayerLobbyEntry.name) return;
+
+    sendMessage(wsRef.current, {
+      type: "setPlayerName",
+      name: normalized,
+    });
+    setLatestStatusText(`Updating name: ${normalized}`);
+  };
+
   const handleReady = () => {
+    if (!isLocalPlayerReadyEligible) {
+      setLatestStatusText(localPlayerNameError || "Enter a valid unique name before readying.");
+      return;
+    }
     sendMessage(wsRef.current, { type: "setReady", ready: true });
   };
 
@@ -1977,6 +2170,7 @@ export default function App() {
       <GameView
         connected={connected}
         playerId={playerId}
+        playerDisplayName={localPlayerDisplayName}
         phase={phase}
         roomCode={roomCode}
         gameState={gameState}
@@ -2012,11 +2206,16 @@ export default function App() {
     <LobbyView
       connected={connected}
       playerId={playerId}
+      playerDisplayName={localPlayerDisplayName}
       phase={phase || lobby?.phase || "lobby"}
       roomCode={roomCode}
       roomCodeInput={roomCodeInput}
       joinedRoom={joinedRoom}
       lobby={lobby}
+      localPlayerNameDraft={localPlayerNameDraft}
+      localPlayerNameError={localPlayerNameError}
+      onLocalPlayerNameDraftChange={setLocalPlayerNameDraft}
+      onCommitLocalPlayerName={handleLocalPlayerNameCommit}
       onRoomCodeInputChange={setRoomCodeInput}
       onCreateRoom={handleCreateRoom}
       onJoinRoom={handleJoinRoom}
@@ -2027,6 +2226,7 @@ export default function App() {
       onStartGame={handleStartGame}
       onUpdateGameConfig={handleUpdateGameConfig}
       isOwner={isOwner}
+      isLocalPlayerReadyEligible={isLocalPlayerReadyEligible}
     />
   );
 }
