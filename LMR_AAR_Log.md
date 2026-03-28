@@ -198,3 +198,83 @@ to prevent recurrence.
 "Never modify what you cannot see exactly. Always operate from the current file, and change only one known element at a time."
 
 ------------------------------------------------------------------------
+
+
+------------------------------------------------------------------------
+
+## 2026-03-28 --- Remote Access Integration & Environment Assumption Errors
+
+### What went well
+
+• Strong step-by-step gating prevented uncontrolled changes  
+• Stable baseline was preserved before introducing networking changes  
+• Single-change discipline (vite → ws → App.tsx → invite flow) worked effectively  
+• Multi-device validation (LAN + ngrok) confirmed end-to-end behavior  
+• Final solution required minimal architectural change (proxy + same-origin WS)  
+
+------------------------------------------------------------------------
+
+### What did not work well
+
+• Incorrect initial assumption: UI-only fix could solve multi-port networking  
+• Attempted to introduce multiple ngrok tunnels (violates free-tier constraint and design simplicity)  
+• Provided partial file edits instead of full replacements (violates working contract)  
+• Misalignment with user workflow (patch instructions instead of full-file replacement)  
+• Clipboard behavior assumed reliable without fallback (environment-dependent API)  
+• Lack of early recognition of environment differences (localhost vs LAN vs ngrok origin)
+
+------------------------------------------------------------------------
+
+### Process corrections
+
+• Enforce **Environment Awareness Rule**  
+→ Always identify runtime environment early:
+  - localhost
+  - LAN (192.168)
+  - public tunnel (ngrok)  
+→ Do not assume same-origin behavior across environments  
+
+• Enforce **Single-Entry Networking Rule**  
+→ For local + remote testing:
+  - UI and WebSocket must share one public entry point  
+→ Prefer proxy routing over multiple exposed ports  
+
+• Reinforce **Full File Replacement Rule (Strict)**  
+→ Never provide partial edits when full replacement is required  
+→ Match user workflow exactly  
+
+• Enforce **Constraint Awareness (Tooling Limits)**  
+→ Account for tool limitations (e.g., ngrok free = one tunnel) before proposing solutions  
+
+• Enforce **Fallback Handling for Browser APIs**  
+→ Do not assume availability of:
+  - clipboard API  
+→ Always provide fallback mechanisms  
+
+------------------------------------------------------------------------
+
+### Outcome
+
+• Root issues:
+  - multi-origin mismatch (UI vs WS ports)
+  - environment-dependent behavior (origin, clipboard)
+  - tooling constraint mismatch (ngrok limitations)
+
+• Final solution:
+  - Vite `/ws` proxy (single origin)
+  - same-origin WebSocket in App.tsx
+  - ngrok single-tunnel architecture
+  - URL-based invite flow
+  - clipboard fallback implementation
+
+• Result:
+  - LAN + remote play functional
+  - invite flow stable
+  - no regression to core systems
+
+------------------------------------------------------------------------
+
+### Reinforced rule
+
+"Always solve networking at the architecture boundary (origin + routing), not inside UI logic. If behavior differs across environments, the issue is almost always origin or transport, not UI state."
+

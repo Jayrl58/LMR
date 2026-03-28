@@ -48,39 +48,52 @@ Playpen/board_geometry/boardGeometry.ts
 
 ---
 
-## Last Session Accomplishments (2026-03-27)
+## Last Session Accomplishments (2026-03-28)
 
-### M5 — Lobby UX & Interaction Stabilization
+### M5 — Lobby Identity, Invite Flow, and Remote Access Foundation
 
-• Rebuilt lobby layout (side-by-side):
-  - Lobby Seats (left)
-  - Pre-Game Options + Start (right)
+• Completed player naming flow end-to-end
+  - Pre-join name required before Create Room / Join Room
+  - Name validation active on client
+  - Names carry into lobby seats table
+  - Names sync globally across clients
+  - Names display in status line
+  - Browser tab title uses player name + room code
+  - Ready is blocked when local player name is invalid
 
-• Implemented fixed 8-seat table model
-  - Rows always visible
-  - Rows disabled based on player count
+• Stabilized owner / join button behavior
+  - Create Room visible but enabled only in valid owner / pre-join states
+  - Join Room disabled once already joined
+  - Lobby entry button-state behavior now matches locked contract
 
-• Restored and stabilized Ready system
-  - Checkbox for current player
-  - Read-only indicators for others
+• Established working pre-join flow
+  - Pre-join state acts as player entry screen
+  - Name field and Room Code field live before lobby join
+  - Join/create transition into joined lobby remains stable
 
-• Implemented owner visibility (crown in seat column)
+• Implemented invite / room entry improvements
+  - URL room-code prefill works with ?room=ROOMCODE
+  - URL room value now overrides stale stored room value on first load
+  - Manual invite baseline validated
+  - Copy Invite Link button now works
 
-• Enforced Start conditions:
-  - Room must be full
-  - All players must be Ready
-  - Owner-only start authority
+• Established LAN invite flow
+  - Host can create room locally
+  - LAN URL works with room query string
+  - Other devices on same network can join using shared URL
 
-• Implemented Start button UX contract:
-  - Green text + green border + light green background when valid
-  - Disabled for non-owner players
-  - No misleading clickable states
+• Established remote testing foundation via ngrok
+  - Vite configured for single-tunnel remote access
+  - /ws proxied through Vite to local server
+  - App.tsx uses same-origin websocket path
+  - ngrok public URL now works for remote invite flow
+  - Public invite links can be copied in correct format
 
-• Added Players X/Y display
-
-• Recovered from multiple UI regressions
-  - Established safe modification approach (full-file replacement only)
-  - Eliminated pattern-based replacements
+• Reached and committed a stable checkpoint
+  - Remote invite flow complete
+  - URL prefill stable
+  - Copy Invite Link stable
+  - No regression to lobby naming / ready / start behavior
 
 ---
 
@@ -89,28 +102,34 @@ Playpen/board_geometry/boardGeometry.ts
 Stable baseline (must be preserved):
 
 • App.tsx  
-  - Lobby layout stabilized  
-  - Seat table behavior correct  
-  - Ready system correct (checkbox + read-only)  
-  - Owner-only start enforced (logic + UI)  
-  - Start button visual contract correct  
-  - Disabled rows functioning correctly  
-
-• handleMessage.ts  
-  - Delegation logic stable  
-  - No-legal-moves contract working  
-  - Team delegation validated  
+  - Pre-join name field implemented  
+  - Client-side name validation active  
+  - Create / Join gated by valid name  
+  - Global player-name sync working  
+  - Status line shows player name  
+  - Browser tab title shows name + room  
+  - URL room prefill stable  
+  - Copy Invite Link working for LAN and ngrok depending on current origin  
+  - WebSocket now uses same-origin /ws path  
 
 • wsServer.ts  
-  - gameOver emission implemented  
-  - ackGameOver wired correctly  
-  - No auto-reset to lobby  
-  - Pending dice structure preserved  
+  - Authoritative name handling working  
+  - Lobby name propagation working  
+  - Ready guard for invalid local name working  
+  - Existing lobby / gameplay behavior preserved  
+
+• vite.config.ts  
+  - host enabled  
+  - /ws proxy to ws://127.0.0.1:8787  
+  - allowed host configured for ngrok testing  
+  - Single ngrok tunnel model working  
 
 System status:
 
-• Multiplayer gameplay loop stable  
-• Lobby flow stable (create → join → ready → start)  
+• Multiplayer lobby flow stable  
+• Player naming flow stable  
+• LAN invite flow stable  
+• ngrok remote invite flow stable  
 • Ownership model functioning correctly  
 • UI interaction contract aligned with server rules  
 
@@ -120,33 +139,57 @@ System status:
 
 Continue M5 refinement:
 
-### Player Identity & Lobby Completion
+### Lobby Completion After Naming
+
+Primary next step:
+• Color selection after join
 
 ---
 
 ## Next Action (START HERE)
 
-### Player Naming Implementation
+### Color Selection Contract and Implementation
 
 Define and implement:
 
-• Player name input (replaces p0/p1/etc.)  
-• Validation rules:
-  - max length: 12 characters  
-  - uniqueness (case-insensitive)  
-  - trimmed input  
+• How a player selects color after joining  
+• Whether colors must be unique / exclusive  
+• Whether only the local player can edit their own color  
+• Exact UI placement for the color control in the lobby table  
 
-• UI placement:
-  - within Lobby Seats table (Player column)
+Begin with contract lock before code.
 
 ---
 
 ## Follow-on Scope (DO NOT IMPLEMENT YET)
 
-• Color selection dropdown  
 • Team selection control  
-• Owner display in header (optional enhancement)  
-• Lobby polish (centering / spacing)  
+• Invite page (Option C, future)  
+• Additional lobby polish  
+• Public deployment planning  
+
+---
+
+## Remote Test Notes
+
+Current remote testing setup:
+
+1. Server:
+   npm run dev:server
+
+2. UI:
+   npm run dev -- --host
+
+3. ngrok:
+   ngrok http 5173
+
+4. Public URL:
+   Use the current ngrok forwarding URL
+
+Behavior:
+• The ngrok URL can host the app directly
+• Create Room on the ngrok-hosted page if you want Copy Invite Link to produce a public ngrok invite
+• Create Room on LAN / localhost page if you want LAN-local invite output instead
 
 ---
 
@@ -156,6 +199,7 @@ Do NOT:
 
 • Modify gameplay loop  
 • Modify server authority model  
+• Rework invite flow again unless regression is observed  
 • Introduce rematch logic  
 • Change delegation or dice systems  
 
@@ -167,21 +211,25 @@ At next session start:
 
 1. Confirm baseline:
    - Run server
+   - Run UI with --host
    - Open 2+ clients
    - Create room
-   - Fill seats
-   - Ready all players
-   - Verify only owner can start
+   - Verify pre-join naming still gates Create / Join
+   - Verify names sync globally
+   - Verify Ready is blocked on invalid local name
+   - Verify Copy Invite Link works
+   - Verify ngrok invite works if remote testing is needed
 
 2. Begin with:
-   → Player naming implementation
+   → Color selection contract
 
 3. Do NOT touch:
-   - start logic  
-   - seat logic  
-   - ready system  
+   - gameplay loop
+   - start logic
+   - ready logic
+   - invite flow
 
-Unless regression is observed  
+Unless regression is observed
 
 ---
 
@@ -189,9 +237,11 @@ Unless regression is observed
 
 Stop immediately if:
 
-• Ready system breaks  
-• Seat table desync occurs  
+• Name sync breaks  
+• Ready gating breaks  
+• URL room prefill regresses  
+• Copy Invite Link regresses  
+• Remote ngrok join stops working  
 • Non-owner can start game  
-• Start becomes clickable incorrectly  
 
 Otherwise proceed

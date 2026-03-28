@@ -88,6 +88,7 @@ function isClientMessage(x: any): x is ClientMessage {
 
     case "joinRoom":
       return (
+        typeof (x as any).name === "string" &&
         (!("roomCode" in x) || typeof x.roomCode === "string") &&
         (!("claimPlayerId" in x) || typeof x.claimPlayerId === "string")
       );
@@ -914,9 +915,6 @@ export function startWsServer(opts: WsServerOptions) {
           persist(room);
         }
 
-        room.sockets.add(ws);
-        wsRoom.set(ws, roomCode);
-
         const claim =
           typeof (msg as any).claimPlayerId === "string" ? String((msg as any).claimPlayerId) : undefined;
 
@@ -924,9 +922,24 @@ export function startWsServer(opts: WsServerOptions) {
         const existing = room.clientToPlayer.get(cid);
         const playerId = existing ?? claim ?? pickNextAvailablePlayerId(room);
 
+        const proposedName = String((msg as any).name ?? "");
+        const validation = validatePlayerNameForRoom(room, playerId, proposedName);
+        if (!validation.ok) {
+          send(ws, makeError("BAD_MESSAGE", validation.message, reqId));
+          return;
+        }
+
+        room.sockets.add(ws);
+        wsRoom.set(ws, roomCode);
         room.clientToPlayer.set(cid, playerId);
         if (!room.readyByPlayer.has(playerId)) room.readyByPlayer.set(playerId, false);
-        if (!room.playerNamesByPlayer.has(playerId)) room.playerNamesByPlayer.set(playerId, playerId);
+
+        const previousName = room.playerNamesByPlayer.get(playerId) ?? playerId;
+        room.playerNamesByPlayer.set(playerId, validation.normalized);
+        if (normalizePlayerName(previousName) !== validation.normalized) {
+          room.readyByPlayer.set(playerId, false);
+        }
+
         if (!room.originalJoinOrder.includes(playerId)) {
           room.originalJoinOrder.push(playerId);
         }
@@ -1122,6 +1135,11 @@ export function startWsServer(opts: WsServerOptions) {
       }
 if (msg.type === "setReady") {
         const ready = !!(msg as any).ready;
+
+        if (ready && !hasValidPlayerName(room, playerId)) {
+          send(ws, makeError("BAD_MESSAGE", "Valid player name required before Ready.", reqId));
+          return;
+        }
 
         // Record readiness first so the "first ready=true" can trigger team lock correctly.
         room.readyByPlayer.set(playerId, ready);
